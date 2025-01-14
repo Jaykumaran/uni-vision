@@ -1,6 +1,7 @@
 torch>=2.0
 torhcvision
 torchaudio
+timm
 
 
 numpy==1.26
