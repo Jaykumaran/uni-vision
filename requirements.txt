@@ -1,0 +1,27 @@
+torch>=2.0
+torhcvision
+torchaudio
+
+
+numpy==1.26
+matplotlib
+
+
+
+#HuggingFace
+transformers>=4.48.0
+
+
+
+#helpers
+albumentations>=1.1.0
+opencv-python==4.10
+tqdm
+torchinfo
+
+
+
+#Evaluate
+
+pycocotools>=2.0.8
+torchmetrics # Evaluation
