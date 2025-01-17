@@ -11,6 +11,7 @@ matplotlib
 
 #HuggingFace
 transformers>=4.48.0
+colpali-engine == 0.3.6
 
 
 
@@ -25,4 +26,4 @@ torchinfo
 #Evaluate
 
 pycocotools>=2.0.8
-torchmetrics # Evaluation
+torchmetrics 
