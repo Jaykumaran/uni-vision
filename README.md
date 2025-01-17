@@ -16,3 +16,5 @@
 
 
 <p> Design inspirations and starter code has been generously borrowed from Segmentation Model PyTorch | Torchvision | Timm | HuggingFace </p>
+
+<p>Building in public,</p>
