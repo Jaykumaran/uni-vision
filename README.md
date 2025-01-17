@@ -3,7 +3,7 @@
 
   <div>
     <a href="https://github.com/Jaykumaran/uni-vision.pytorch/blob/main/LICENSE">
-      <img src="https://img.shields.io/badge/License-MIT-<COLOR>.svg?style=for-the-badge" alt="License">
+      <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="License">
     </a>
     <a href="https://pepy.tech/project/segmentation-models-pytorch">
       <img src="https://img.shields.io/badge/PYTORCH-2.0+-red?style=for-the-badge&logo=pytorch" alt="PyTorch Version">
