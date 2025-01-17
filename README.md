@@ -15,7 +15,7 @@
 </div>
 
 
-## Acknowledgements
+#### Acknowledgements
 
 Design inspirations and starter code have been generously borrowed from:
 
