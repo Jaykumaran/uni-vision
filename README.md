@@ -13,3 +13,6 @@
     </a>
   </div>
 </div>
+
+
+<p> Design inspirations and starter code has been generously borrowed from Segmentation Model PyTorch | Torchvision | Timm | HuggingFace </p>
