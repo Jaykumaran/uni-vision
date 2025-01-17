@@ -1,5 +1,5 @@
-<div align="center">
-  <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcStzUJQvOCKD6cMKfepS2klUZ6Rh-vjhnoaAQ&s" alt="Project Logo" width="300">
+<h1 align="center">Uni-Vision</h1>
+
 
   <div>
     <a href="https://github.com/Jaykumaran/uni-vision.pytorch/blob/main/LICENSE">
