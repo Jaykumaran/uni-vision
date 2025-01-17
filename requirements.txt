@@ -6,12 +6,15 @@ timm
 
 numpy==1.26
 matplotlib
+einops
 
 
 
 #HuggingFace
 transformers>=4.48.0
+mteb
 colpali-engine == 0.3.6
+
 
 
 
@@ -20,10 +23,19 @@ albumentations>=1.1.0
 opencv-python==4.10
 tqdm
 torchinfo
+gradio
 
 
 
 #Evaluate
-
 pycocotools>=2.0.8
 torchmetrics 
+
+
+#Vision-RAG
+poppler-utils
+pdf2image
+google-generativeai
+typer
+
+
