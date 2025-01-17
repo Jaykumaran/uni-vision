@@ -20,9 +20,9 @@
 Design inspirations and starter code have been generously borrowed from:
 
 - [Segmentation Model PyTorch](https://github.com/qubvel/segmentation_models.pytorch)
-- [Torchvision](https://pytorch.org/vision/stable/index.html)
-- [Timm](https://github.com/huggingface/timm)
-- [HuggingFace](https://huggingface.co/transformers/)
+- [Torchvision](https://github.com/pytorch/vision)
+- [Timm](https://github.com/huggingface/pytorch-image-models/tree/main)
+- [HuggingFace](https://huggingface.co/transforhttps://github.com/huggingface/transformers)
 
 ---
 
