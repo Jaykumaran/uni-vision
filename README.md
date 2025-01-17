@@ -15,6 +15,15 @@
 </div>
 
 
-<p> Design inspirations and starter code has been generously borrowed from Segmentation Model PyTorch | Torchvision | Timm | HuggingFace </p>
+## Acknowledgements
 
-<p>Building in public,</p>
+Design inspirations and starter code have been generously borrowed from:
+
+- [Segmentation Model PyTorch](https://github.com/qubvel/segmentation_models.pytorch)
+- [Torchvision](https://pytorch.org/vision/stable/index.html)
+- [Timm](https://github.com/huggingface/timm)
+- [HuggingFace](https://huggingface.co/transformers/)
+
+---
+
+**Building in public**
