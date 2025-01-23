@@ -3,11 +3,9 @@ torhcvision
 torchaudio
 timm
 
-
 numpy==1.26
 matplotlib
 einops
-
 
 
 #HuggingFace
@@ -38,4 +36,7 @@ pdf2image
 google-generativeai
 typer
 
+
+#3D Vision
+open3d
 
