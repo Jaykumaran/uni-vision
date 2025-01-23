@@ -17,7 +17,6 @@ colpali-engine == 0.3.6
 
 
 
-
 #helpers
 albumentations>=1.1.0
 opencv-python==4.10
@@ -33,6 +32,7 @@ torchmetrics
 
 
 #Vision-RAG
+openai
 poppler-utils
 pdf2image
 google-generativeai

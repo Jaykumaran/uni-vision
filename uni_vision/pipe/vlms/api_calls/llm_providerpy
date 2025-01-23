@@ -1,0 +1,23 @@
+from openai import OpenAI
+import os
+
+
+def call_llm(provider: str, api_key:str, base_url:str):
+    
+    """
+    
+    Support most of LLM Providers
+    Eg: 
+    provider = GEMINI or OPENAI or HUGGINGFACE or ANTHROPIC or etc,
+    api_key = "GEMINI_API_KEY" or any llm provider
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    """
+    provider = provider.upper
+    os.environ[f"{provider}_API_KEY"] = api_key
+    client = OpenAI(
+        api_key=api_key,
+        base_url= base_url   
+    )
+    
+    return client
