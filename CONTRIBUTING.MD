@@ -10,7 +10,7 @@ Thank you for your interest in contributing to **Uni-Vision**! We welcome contri
 2. **Clone Your Fork**  
    Clone the forked repository to your local machine:
    ```bash
-   git clone https://github.com/<your-username>/uni-vision.git
+   git clone https://github.com/Jaykumaran/uni-vision.git
    cd uni-vision
    ```
 
