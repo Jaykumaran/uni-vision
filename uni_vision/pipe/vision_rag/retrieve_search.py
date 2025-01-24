@@ -6,6 +6,8 @@ from pdf2image import convert_from_path
 from colpali_engine.models import ColPali, ColPaliProcessor
 
 
+vlms = ["ColPali"]
+
 def vision_search(model_hf_name : str, queries: str, ds, images):
         
     model = ColPali.from_pretrained(
