@@ -6,7 +6,6 @@ import numpy as np
 def estimate_normal(depth: np.ndarray, kernel_size: int = 7):
     
     
-    
     grad_x = cv2.Sobel(depth.astype(np.float32), ddepth=cv2.CV_32F, dx = 1, dy = 0, ksize=kernel_size)
     grad_y = cv2.Sobel(depth.astype(np.float32), ddepth= cv2.CV_32F, dx = 0, dy = 1, ksize=kernel_size)
     
