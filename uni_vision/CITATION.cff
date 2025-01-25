@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Uni-Vision: Unified Vision Framework in PyTorch"
+authors:
+  - family-names: "Jaykumaran"
+    given-names: ""
+date-released: "2025-01-25"
+version: "1.0.0"
+repository-code: "https://github.com/Jaykumaran/uni-vision.git"
+license: "Apache-2.0"
