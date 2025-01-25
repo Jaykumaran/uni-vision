@@ -26,4 +26,4 @@ Design inspirations and starter code have been generously borrowed from:
 
 ---
 
-**Building in public**
+**Building in public : A Broken Pipeline ✌**
