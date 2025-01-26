@@ -1,12 +1,15 @@
 from torch.utils.tensorboard import SummaryWriter
 import os
-from dataclasses import dataclass
+from configs.train_config import TrainingConfig
 
-def setup_logdir(training_config: dataclass):
+def setup_logdir(training_config: TrainingConfig):
     
+    #Ensure roor dir exists
     os.makedirs(training_config.root_log_dir, exist_ok = True)
     os.makedirs(training_config.root_checkpoint_dir, exist_ok = True)
     
+    
+    #Check for existing versions folders
     if os.path.isdir(training_config.root_log_dir):
         #Get all folder numbers in the root_dir
         folder_numbers  = [
@@ -31,7 +34,7 @@ def setup_logdir(training_config: dataclass):
     training_config.checkpoint_dir = os.path.join(training_config.root_checkpoint_dir, version_name)
     
     os.makedirs(training_config.log_dir, exist_ok=True)
-    os.makedirs(training_config.checkpoint_dit, exist_ok=True)
+    os.makedirs(training_config.checkpoint_dir, exist_ok=True)
     
     print(f"Logging at: {training_config.log_dir}")
     print(f"Model checkpoint at: {training_config.checkpoint_dir}")
