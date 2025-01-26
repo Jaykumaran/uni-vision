@@ -40,7 +40,7 @@ class Train:
         self.scheduler = scheduler
         
         #Setup log dir and model ckpt versioning
-        self.train_config, self.current_version_name = setup_logdir(train_config)
+        self.train_config, _ = setup_logdir(train_config)
 
         #Tensorboard Writer
         self.tb_writer = SummaryWriter(
