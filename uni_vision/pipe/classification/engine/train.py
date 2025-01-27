@@ -27,7 +27,7 @@ reset = f"\033[0m"
 
 
 
-class Train:
+class Trainer:
     
     def __init__(self,  train_config: TrainingConfig, model: nn.Module , train_loader : DataLoader, val_loader: DataLoader, 
                  optimizer : optim.Optimizer, total_epochs: int, scheduler: Optional[optim.lr_scheduler._LRScheduler] = None): 
