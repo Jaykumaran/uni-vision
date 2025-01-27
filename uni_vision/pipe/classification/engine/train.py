@@ -20,6 +20,7 @@ from torchmetrics import MeanMetric
 from torchmetrics.classification import MulticlassAccuracy
 
 from configs.train_config import TrainingConfig
+from utils.plot_metrics import plot_results
 
 
 bold = f"\033[1m"
@@ -146,8 +147,6 @@ class Trainer:
         
     def run(self,
         DEVICE: torch.device, 
-        model: nn.Module, 
-        dataset_config: dataclass,
     ) -> dict:
         
         
@@ -235,6 +234,26 @@ class Trainer:
             valid_acc = epoch_val_acc,
         )
         
+        
+        plot_results(
+            [train_acc, val_acc],
+            ylabel = "Accuracy",
+            ylim = [0.0, 1.1],
+            metric_name = ["Training Accuracy", "Validation Accuracy"],
+            color = ["b", "g"] ,#'b'
+            num_epochs = self.total_epochs,
+            save_name='accuracy_plot'
+        )
+        
+        plot_results(
+            [train_loss, val_loss],
+            ylabel = "Loss",
+            ylim = [0.0, 2.0],
+            metric_name = ["Training Loss", "Validation Loss"],
+            color = ["r", "y"],
+            num_epochs=self.total_epochs,
+            save_name='loss_curve_plot'
+        )
         
         return history
             

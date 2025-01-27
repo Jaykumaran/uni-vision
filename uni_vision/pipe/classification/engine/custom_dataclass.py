@@ -38,7 +38,7 @@ class CustomDatasetClass(Dataset):
             
             #class_idx mapping from the CSV File
             self.classes = self.data_frame['class'].unique()
-            self.cls_to_idx = {cls_name for i, cls_name in enumerate(self.classes)}
+            self.cls_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
             
         elif os.path.isdir(input_path):
             self.image_folder = datasets.ImageFolder(root = input_path, transform = transform)
@@ -48,7 +48,7 @@ class CustomDatasetClass(Dataset):
         else:
             raise ValueError("input path must be a valid CSV or a  path to the dataset root folder")
         
-        
+   
     def __len__(self):
         #Use ImageFolder's length if a folder is provided
         if hasattr(self, 'image_folder'):
@@ -56,8 +56,13 @@ class CustomDatasetClass(Dataset):
         #Otherwise dataframe from CSV
         return len(self.data_frame)
     
+    @property
     def __num_classes__(self):
         return len(self.classes)
+    
+    @property
+    def __classes__(self):
+        return self.classes
     
     
     def __getitem__(self, idx):
