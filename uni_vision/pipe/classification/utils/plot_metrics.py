@@ -11,7 +11,7 @@ bold = f"\033[1m" ; reset = f"\033[1m"
 
 
 
-def plot_results(
+def plot_metrics(
     metrics,
     num_epochs,
     title = None,

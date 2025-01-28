@@ -20,7 +20,8 @@ from torchmetrics import MeanMetric
 from torchmetrics.classification import MulticlassAccuracy
 
 from configs.train_config import TrainingConfig
-from utils.plot_metrics import plot_results
+from utils.plot_metrics import plot_metrics
+from utils.plot_predictions import plot_predictions
 
 
 bold = f"\033[1m"
@@ -225,7 +226,7 @@ class Trainer:
   
                
         #Load best weights   
-        self.load_state_dict(best_weights)
+        self.model.load_state_dict(best_weights)
         
         history = dict(
             train_loss = epoch_train_loss,
@@ -235,7 +236,7 @@ class Trainer:
         )
         
         
-        plot_results(
+        plot_metrics(
             [train_acc, val_acc],
             ylabel = "Accuracy",
             ylim = [0.0, 1.1],
@@ -245,7 +246,7 @@ class Trainer:
             save_name='accuracy_plot'
         )
         
-        plot_results(
+        plot_metrics(
             [train_loss, val_loss],
             ylabel = "Loss",
             ylim = [0.0, 2.0],
@@ -254,6 +255,8 @@ class Trainer:
             num_epochs=self.total_epochs,
             save_name='loss_curve_plot'
         )
+        
+        plot_predictions(model = self.model,data_loader=self.val_loader, class_names=self.val_loader.__classes__, mode = "correct", num_samples = 10)
         
         return history
             

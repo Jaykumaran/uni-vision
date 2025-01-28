@@ -5,6 +5,10 @@ from engine.image_transforms import denormalize
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+from configs.train_config import TrainingConfig
+
+
 
 def visualize_image_predictions(
     image_batch: torch.tensor,
@@ -47,8 +51,11 @@ def visualize_image_predictions(
         plt.axis('off')
         
         plt.imshow(image_np)
+    
 
-    plt.imshow()
+    plt.show()
+    plt.savefig(f"{os.path.join(TrainingConfig.checkpoint_dir, "prediction_canvas")}.jpg")
+
     return
 
 
@@ -76,7 +83,7 @@ def plot_predictions(
     mean: torch.tensor = torch.tensor([0.485, 0.456, 0.406]),
     std: torch.tensor = torch.tensor([0.229, 0.224, 0.225]),
     mode : str = "correct",
-    num_samples: int = 10
+    num_samples: int = 10,
 ):
     model = model.eval.to(device)
     
@@ -125,7 +132,8 @@ def plot_predictions(
         target_batch=targets_to_plot,
         class_names=class_names,
         total_samples=num_samples,
-        mode=mode
+        mode=mode,
+
     )
     
     
