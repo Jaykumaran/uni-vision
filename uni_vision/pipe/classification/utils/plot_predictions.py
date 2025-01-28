@@ -41,7 +41,7 @@ def visualize_image_predictions(
             
         image_np = (image.numpy()*255).astype(np.uint8)
          
-        ax = plt.subplot(num_cols, num_cols, i + 1)
+        ax = plt.subplot(num_cols, num_rows, i + 1)
         title = f"Tar: {class_names[int(target)]}, Pred: {class_names[int(preds[1])]}"
         title += f'({float(preds[0]):.2f})'
         title_obj = plt.title(title, fontdict=font_format)
