@@ -1,20 +1,19 @@
 <h1 align="center">Uni-Vision</h1>
 
-
-  <div>
+<div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;">
     <a href="https://github.com/Jaykumaran/uni-vision.pytorch/blob/main/LICENSE">
-      <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="License">
+        <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge" alt="License">
     </a>
     <a href="https://pepy.tech/project/segmentation-models-pytorch">
-      <img src="https://img.shields.io/badge/PYTORCH-2.0+-red?style=for-the-badge&logo=pytorch" alt="PyTorch Version">
+        <img src="https://img.shields.io/badge/PYTORCH-2.0+-red?style=for-the-badge&logo=pytorch" alt="PyTorch Version">
     </a>
     <a href="https://pepy.tech/project/segmentation-models-pytorch">
-      <img src="https://img.shields.io/badge/PYTHON-3.10+-red?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
+        <img src="https://img.shields.io/badge/PYTHON-3.10+-red?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
     </a>
-  </div>
 </div>
 
 ---
+
 #### Acknowledgements
 
 Design inspirations and starter code have been generously borrowed from:
