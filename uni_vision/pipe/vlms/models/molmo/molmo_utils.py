@@ -28,7 +28,7 @@ def molmo_answer(model_id, quant_config, query_text, input_image,max_tokens =204
 
 
 
-def overlay_pointson_image(image, points ,radius = 5, color = (255, 0, 0)):
+def overlay_points_on_image(image, points ,radius = 5, color = (255, 0, 0)):
     
     """Overlay points and a label on the image
 
