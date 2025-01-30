@@ -4,10 +4,14 @@ from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
 import cv2
 import numpy as np
+from typing import List
 
+
+
+#Support Multi Class and Binary Segmentation
 class CustomSegDataset(Dataset):
     
-    def __init__(self, *, image_size, num_classes, image_paths, mask_paths = None, transforms = None, is_train = False):
+    def __init__(self, *, image_size, num_classes, image_paths:List, mask_paths : List = None, transforms = None, is_train = False):
         
         self.img_size = image_size
         self.image_paths = image_paths
