@@ -1,5 +1,20 @@
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
+import torch
+
+
+
+
+def denormalize(image_tensor: torch.tensor, mean = (0.485, 0.456, 0.406), std = (0.229, 0.224, 0.225)):
+    
+    for c in range(3):
+        image_tensor[:, c, :, :].mul_(std[c]).add_(mean[c])
+    
+    return torch.clamp(image_tensor, min = 0.0, max = 1.0)
+
+
+
 
 def rev_id2color(id2color: dict):
 
@@ -61,3 +76,42 @@ def image_overlay(image, segmented_image):
 
 
 
+def overlayed_groundtruth(*, images, masks, color_mask = False, color_map = id2color):
+    
+    title = ['GT Image', 'GT Mask', 'Overlayed Mask']
+    
+    for idx in range(images.shape[0]):
+        
+        image = images[idx]
+        grayscale_gt_mask = masks[idx]
+        
+        plt.figure(figsize = (12, 4))
+        
+        #Create RGB Seg map from Grayscale seg map
+        rgb_gt_mask = num2rgb(grayscale_gt_mask, colormap=color_map)
+        
+        overlayed_image = image_overlay(image, rgb_gt_mask)
+        
+        plt.subplot(1, 3, 1)
+        plt.title(title[0])
+        plt.imshow(image)
+        plt.axis('off')
+        
+        plt.subplot(1, 3, 2)
+        plt.title(title[1])
+        if color_mask:
+            plt.imshow(rgb_gt_mask)
+        
+        else:
+            plt.imshow(grayscale_gt_mask)
+        plt.axis('off')
+        
+        plt.subplot(1, 3, 3)
+        plt.title(title[2])
+        plt.imshow(overlayed_image)
+        plt.axis('off')
+        
+        plt.show()
+        plt.close()
+        
+    return
