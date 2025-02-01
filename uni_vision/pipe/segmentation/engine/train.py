@@ -23,7 +23,7 @@ from configs.train_config import TrainingConfig
 from utils.plot_metrics import plot_metrics
 from utils.plot_predictions import plot_predictions
 
-from losses import dice_coef_loss, mean_iou
+from uni_vision.pipe.segmentation.engine.seg_losses import dice_coef_loss, mean_iou
 
 
 bold = f"\033[1m"
@@ -56,11 +56,11 @@ class Trainer:
     def train_one_epoch(self, epoch_idx: int, device: Union[str, int]  = "cuda" , class_weight: Optional[torch.tensor ]= None):
         
         self.model.train()
-        
+        num_classes = self.train_loader.dataset.__num_classes__
         metric_record = MeanMetric()
         loss_record = MeanMetric()
-        acc_record = MulticlassAccuracy(num_classes = self.train_loader.dataset.__num_classes__, average = "micro")
-        
+        acc_record = MulticlassAccuracy(num_classes = num_classes, average = "micro")
+       
         
         status = f"Train:\t{bold} Epoch: {epoch_idx} / {self.total_epochs}{reset}"
         prog_bar = tqdm(self.train_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
@@ -75,27 +75,20 @@ class Trainer:
             
             #Have to include focal loss
             loss = dice_coef_loss(outputs, target, num_classes = num_classes)
-            
-            
-            
+        
             loss.backward()
             
             self.optimizer.step()
-            
-            #
-            logits = logits.detach()
                     
             #Get the index of max probability
-            pred_idx = logits.argmax(dim = 1)
+            pred_idx = outputs.detach().argmax(dim = 1)
             
-            metric = mean_iou(pred_idx, target, num_classes = num_classes)
+            mean_iou_metric = mean_iou(pred_idx, target, num_classes = num_classes)
             
             acc_record.update(pred_idx.cpu(), target.cpu())
             
             loss_record.update(loss.detach().cpu(), weight = batch_data.shape[0])
-            metric_record.update(metric.cpu())
-            
-            
+            metric_record.update(mean_iou_metric.cpu())
             
             #Update progress bar description
             step_status = status + f"\tLoss: {loss_record.compute():.4f}, IoU: {metric_record.compute():4f}, Acc: {acc_record.compute():4f}"
@@ -104,53 +97,62 @@ class Trainer:
     
         #Per epoch
         train_loss = loss_record.compute()
-        train_metric = metric_record.compute()
+        train_iou = metric_record.compute()
         train_acc = acc_record.compute()
         
         prog_bar.close()
         
-        return train_loss, train_metric, train_acc
+        return train_loss, train_iou, train_acc
     
     
     def validate(self, epoch_idx: int, device: str  = "cuda"):
         
         self.model.eval()
         
-        acc_metric = MulticlassAccuracy(num_classes = self.val_loader.dataset.__num_classes__)
-        mean_metric = MeanMetric()
+        num_classes = self.train_loader.dataset.__num_classes__
+        metric_record = MeanMetric()
+        loss_record = MeanMetric()
+        acc_record = MulticlassAccuracy(num_classes = num_classes, average = "micro")
+        
         
         status = f"Valid:\t{bold}Epoch: {epoch_idx}/ {self.total_epochs}{reset}"
         prog_bar = tqdm(self.val_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         
         prog_bar.set_description(status)
         
-        for batch_data, targets in prog_bar:
+        for batch_data, target in prog_bar:
             
-            batch_data, targets = batch_data.to(device), targets.to(device)
+            batch_data, target = batch_data.to(device), target.to(device)
             
-            outputs = self.model(batch_data)
+            with torch.no_grad():
+                outputs = self.model(batch_data)
+                    
+            val_loss = dice_coef_loss(outputs, target, num_classes=num_classes)
             
-            prob = F.softmax(outputs, dim = 1)
+            pred_idx = outputs.argmax(dim = 1)
             
-            val_loss = F.cross_entropy(outputs, targets).item()
+            #Calculate Segmentation specific metric (Dice or IoU)
             
-            pred_idx = prob.detach().argmax(dim = 1)
+            mean_iou_metric = mean_iou(pred_idx, target, num_classes=num_classes)
             
-            mean_metric(val_loss, weight = batch_data.shape[0])
+            acc_record.update(pred_idx.cpu(), target.cpu())
+            loss_record.update(val_loss.cpu(), weight= batch_data.shape[0])
             
-            acc_metric(pred_idx.cpu(), targets.cpu())
+            metric_record.update(mean_iou_metric.cpu(), weight = batch_data.shape[0])
+            
             
             #Update prog bar description
-            step_status = status + f"\tLoss: {mean_metric.compute():.4f}, Acc: {acc_metric.compute():.4f}"
+            step_status = status + f"\tLoss: {loss_record.compute():.4f}, IoU: {metric_record.compute():4f}, Acc: {acc_record.compute():4f}"
             prog_bar.set_description(step_status)
             
-        val_loss = mean_metric.compute()
-        val_acc = acc_metric.compute()
+        val_loss = loss_record.compute()
+        val_iou = metric_record.compute()
+        val_acc = acc_record.compute()
         
         prog_bar.close()
         
         
-        return val_loss, val_acc
+        return val_loss, val_iou,  val_acc
             
         
         

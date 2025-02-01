@@ -120,7 +120,8 @@ class Trainer:
             
             batch_data, targets = batch_data.to(device), targets.to(device)
             
-            outputs = self.model(batch_data)
+            with torch.no_grad():
+                outputs = self.model(batch_data)
             
             prob = F.softmax(outputs, dim = 1)
             
