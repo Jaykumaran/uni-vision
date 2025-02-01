@@ -168,7 +168,10 @@ class Trainer:
         #epoch train/val loss
         epoch_train_loss, epoch_val_loss = [], []
         
-        #epoch train/test accuracy
+        #epoch train/val IoU
+        epoch_train_iou, epoch_val_iou = [], []
+        
+        #epoch train/val accuracy
         epoch_train_acc, epoch_val_acc = [] , []
          
         
@@ -178,15 +181,17 @@ class Trainer:
         for epoch in range(self.total_epochs):
             
             #Training
-            train_loss, train_acc = self.train_one_epoch(self.train_config, epoch_idx = epoch + 1, device=DEVICE)
+            train_loss, train_iou, train_acc = self.train_one_epoch(self.train_config, epoch_idx = epoch + 1, device=DEVICE)
             
-            val_loss, val_acc = self.validate(self.train_config, epoch_idx = epoch + 1, device = DEVICE)
+            val_loss, val_iou, val_acc = self.validate(self.train_config, epoch_idx = epoch + 1, device = DEVICE)
             
             
             train_loss_stat = f"{bold}Train Loss: {train_loss:.4f}{reset}"
+            train_iou_stat = f"{bold}Train IoU: {train_iou:.4f}{reset}"
             train_acc_stat = f"{bold}Train Acc: {train_acc:.4f}{reset}"
             
             val_loss_stat = f"{bold}Val Loss: {val_loss:.4f}{reset}"
+            val_iou_stat = f"{bold}Val IoU: {val_iou:.4f}{reset}"
             val_acc_stat = f"{bold}Val Acc: {val_acc:.4f}{reset}"
             
             print(f"\n{train_loss_stat:<30}{train_acc_stat}")
@@ -194,13 +199,20 @@ class Trainer:
             
             
             epoch_train_loss.append(train_loss)
+            epoch_train_iou.append(train_iou)
             epoch_train_acc.append(train_acc)
             
+            
             epoch_val_loss.append(val_loss)
+            epoch_val_iou.append(val_iou)
             epoch_val_acc.append(val_acc)  
             
             self.tb_writer.add_scalars('Loss/train-val', {'train': train_loss,
                                                           'validation':val_acc}, epoch)
+            
+            
+            self.tb_writer.add_scalars('IoU/train-val', {'train': train_iou,
+                                                            'validation': val_iou}, epoch)
             
             self.tb_writer.add_scalars('Accuracy/train-val', {'train': train_acc, 
                                                               'validation': val_acc}, epoch)
