@@ -11,6 +11,9 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+
 from logger_tb.tb_log import setup_logdir
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -42,6 +45,7 @@ class Trainer:
         self.total_epochs = total_epochs
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.scaler = torch.cuda.amp.GradScaler('cuda')
         
         #Setup log dir and model ckpt versioning
         self.train_config, _ = setup_logdir(train_config)
@@ -66,19 +70,21 @@ class Trainer:
         prog_bar = tqdm(self.train_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         prog_bar.set_description(status)
         
-        for (batch_data, target) in enumerate(prog_bar):
+        for (batch_data, target) in prog_bar:
             batch_data, target = batch_data.to(device), target.to(device)
             
             self.optimizer.zero_grad()
             
-            outputs = self.model(batch_data) #logits
+            with torch.autocast(device_type=device):
+                outputs = self.model(batch_data) #logits
             
-            #Have to include focal loss
-            loss = dice_coef_loss(outputs, target, num_classes = num_classes)
+                #Have to include focal loss
+                loss = dice_coef_loss(outputs, target, num_classes = num_classes)
         
-            loss.backward()
+            self.scaler.scale(loss).backward()
             
-            self.optimizer.step()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
                     
             #Get the index of max probability
             pred_idx = outputs.detach().argmax(dim = 1)
@@ -94,7 +100,6 @@ class Trainer:
             step_status = status + f"\tLoss: {loss_record.compute():.4f}, IoU: {metric_record.compute():4f}, Acc: {acc_record.compute():4f}"
             prog_bar.set_description(step_status)
             
-    
         #Per epoch
         train_loss = loss_record.compute()
         train_iou = metric_record.compute()
@@ -109,7 +114,7 @@ class Trainer:
         
         self.model.eval()
         
-        num_classes = self.train_loader.dataset.__num_classes__
+        num_classes = self.val_loader.dataset.__num_classes__
         metric_record = MeanMetric()
         loss_record = MeanMetric()
         acc_record = MulticlassAccuracy(num_classes = num_classes, average = "micro")
@@ -125,9 +130,10 @@ class Trainer:
             batch_data, target = batch_data.to(device), target.to(device)
             
             with torch.no_grad():
-                outputs = self.model(batch_data)
+                with torch.autocast(device_type=device):
+                    outputs = self.model(batch_data)
                     
-            val_loss = dice_coef_loss(outputs, target, num_classes=num_classes)
+                    val_loss = dice_coef_loss(outputs, target, num_classes=num_classes)
             
             pred_idx = outputs.argmax(dim = 1)
             
@@ -181,9 +187,9 @@ class Trainer:
         for epoch in range(self.total_epochs):
             
             #Training
-            train_loss, train_iou, train_acc = self.train_one_epoch(self.train_config, epoch_idx = epoch + 1, device=DEVICE)
+            train_loss, train_iou, train_acc = self.train_one_epoch(epoch_idx = epoch + 1, device=DEVICE)
             
-            val_loss, val_iou, val_acc = self.validate(self.train_config, epoch_idx = epoch + 1, device = DEVICE)
+            val_loss, val_iou, val_acc = self.validate(epoch_idx = epoch + 1, device = DEVICE)
             
             
             train_loss_stat = f"{bold}Train Loss: {train_loss:.4f}{reset}"
@@ -194,8 +200,8 @@ class Trainer:
             val_iou_stat = f"{bold}Val IoU: {val_iou:.4f}{reset}"
             val_acc_stat = f"{bold}Val Acc: {val_acc:.4f}{reset}"
             
-            print(f"\n{train_loss_stat:<30}{train_acc_stat}")
-            print(f"{val_loss_stat:<30}{val_acc_stat}")
+            print(f"\n{train_loss_stat:<30}{train_iou_stat:<30}{train_acc_stat}")
+            print(f"{val_loss_stat:<30}{val_iou_stat:<30}{val_acc_stat}")
             
             
             epoch_train_loss.append(train_loss)
@@ -208,7 +214,7 @@ class Trainer:
             epoch_val_acc.append(val_acc)  
             
             self.tb_writer.add_scalars('Loss/train-val', {'train': train_loss,
-                                                          'validation':val_acc}, epoch)
+                                                          'validation':val_loss}, epoch)
             
             
             self.tb_writer.add_scalars('IoU/train-val', {'train': train_iou,

@@ -54,14 +54,17 @@ class Trainer:
     def train_one_epoch(self, epoch_idx: int, device: Union[str, int]  = "cuda" , class_weight: Optional[torch.tensor ]= None):
         
         self.model.train()
-        acc_metric = MulticlassAccuracy(num_classes = self.train_loader.dataset.__num_classes__, average = "micro")
+        num_classes = self.train_loader.dataset.__num_classes__
+        self.scaler = torch.cuda.amp.GradScaler('cuda')
+
+        acc_metric = MulticlassAccuracy(num_classes = num_classes, average = "micro")
         mean_metric = MeanMetric()
         
         status = f"Train:\t{bold} Epoch: {epoch_idx} / {self.total_epochs}{reset}"
         prog_bar = tqdm(self.train_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         prog_bar.set_description(status)
         
-        for (batch_data, target) in enumerate(prog_bar):
+        for (batch_data, target) in prog_bar:
             batch_data, target = batch_data.to(device), target.to(device)
             
             self.optimizer.zero_grad()
@@ -73,13 +76,14 @@ class Trainer:
             else:
                 loss = F.cross_entropy(output, target)
             
-            loss.backward()
+            self.scaler.scale(loss).backward()
             
-            self.optimizer.step()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             
             
             #batch loss
-            mean_metric(loss.item(), weight = batch_data.shape[0])
+            mean_metric.update(loss.cpu().item(), weight = batch_data.shape[0])
 
             #get prob score using softmax
             prob = F.softmax(output, dim = 1) #along the out_channels dim
@@ -88,7 +92,7 @@ class Trainer:
             pred_idx = prob.detach().argmax(dim = 1)
             
             #Batch accuracy
-            acc_metric(pred_idx.cpu(), target.cpu())
+            acc_metric.update(pred_idx.cpu(), target.cpu())
             
             #Update progress bar description
             step_status = status + f"\tLoss: {mean_metric.compute():.4f}, Acc: {acc_metric.compute():4f}"
@@ -106,9 +110,9 @@ class Trainer:
     
     def validate(self, epoch_idx: int, device: str  = "cuda"):
         
-        self.model.eval()
-        
-        acc_metric = MulticlassAccuracy(num_classes = self.val_loader.dataset.__num_classes__)
+       
+        num_classes = self.val_loader.dataset.__num_classes__
+        acc_metric = MulticlassAccuracy(num_classes = num_classes, average='micro')
         mean_metric = MeanMetric()
         
         status = f"Valid:\t{bold}Epoch: {epoch_idx}/ {self.total_epochs}{reset}"
@@ -120,8 +124,11 @@ class Trainer:
             
             batch_data, targets = batch_data.to(device), targets.to(device)
             
+            self.model.eval()
             with torch.no_grad():
-                outputs = self.model(batch_data)
+                with torch.autocast(device_type=device):
+                
+                  outputs = self.model(batch_data)
             
             prob = F.softmax(outputs, dim = 1)
             
@@ -129,9 +136,9 @@ class Trainer:
             
             pred_idx = prob.detach().argmax(dim = 1)
             
-            mean_metric(val_loss, weight = batch_data.shape[0])
+            mean_metric.update(val_loss, weight = batch_data.shape[0])
             
-            acc_metric(pred_idx.cpu(), targets.cpu())
+            acc_metric.update(pred_idx.cpu(), targets.cpu())
             
             #Update prog bar description
             step_status = status + f"\tLoss: {mean_metric.compute():.4f}, Acc: {acc_metric.compute():.4f}"
@@ -169,9 +176,9 @@ class Trainer:
         for epoch in range(self.total_epochs):
             
             #Training
-            train_loss, train_acc = self.train_one_epoch(self.train_config, epoch_idx = epoch + 1, device=DEVICE)
+            train_loss, train_acc = self.train_one_epoch( epoch_idx = epoch + 1, device=DEVICE)
             
-            val_loss, val_acc = self.validate(self.train_config, epoch_idx = epoch + 1, device = DEVICE)
+            val_loss, val_acc = self.validate(epoch_idx = epoch + 1, device = DEVICE)
             
             
             train_loss_stat = f"{bold}Train Loss: {train_loss:.4f}{reset}"
@@ -191,7 +198,7 @@ class Trainer:
             epoch_val_acc.append(val_acc)  
             
             self.tb_writer.add_scalars('Loss/train-val', {'train': train_loss,
-                                                          'validation':val_acc}, epoch)
+                                                          'validation':val_loss}, epoch)
             
             self.tb_writer.add_scalars('Accuracy/train-val', {'train': train_acc, 
                                                               'validation': val_acc}, epoch)
@@ -207,7 +214,7 @@ class Trainer:
             
             if val_loss < best_loss:
                 best_loss = val_loss
-                print(f"\Model Improved ... Saving Model ...", end = "")
+                print(f"Model Improved ... Saving Model ...", end = "")
                 best_weights = copy.deepcopy(self.model.state_dict())   
                 
                 checkpoint_path = os.path.join(
