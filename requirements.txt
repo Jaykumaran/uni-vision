@@ -25,6 +25,7 @@ opencv-python >= 4.10
 tqdm >= 4.67.1
 torchinfo >= 1.8.0
 gradio >= 5.13.0
+gdown >= 5.2.0
 
 #Evaluate
 pycocotools >= 2.0.8
