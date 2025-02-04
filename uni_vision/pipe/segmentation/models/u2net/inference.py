@@ -65,4 +65,10 @@ def prepare_batch(image_dir, resize, transforms, device):
         image = Image.open(os.path.join(image_dir, image_file)).convert('RGB')
         image_resize = image.resize(resize, resample=Image.BILINEAR)
         
-        image_trans
+        image_trans = transforms(image_resize)
+        image_batch.append(image_trans)
+        
+    
+    image_batch = torch.stack(image_batch).to(device)
+    
+    return image_batch
