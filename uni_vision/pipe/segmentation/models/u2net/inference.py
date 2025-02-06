@@ -72,3 +72,6 @@ def prepare_batch(image_dir, resize, transforms, device):
     image_batch = torch.stack(image_batch).to(device)
     
     return image_batch
+
+
+# image_batch = prepare_batch()

@@ -1,57 +1,11 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple
 
 
 
-def mean_iou(predictions: torch.tensor, ground_truths: torch.tensor, num_classes: int = None, dims: Tuple = (1,2)):
-    """
-    Args:
-    
-    predctions : Pred from model with or without softmax
-    
-    dims : Dims correspond of image height and width
-    
-    Returns:
-    A scalar tensor representing the Classwise Mean IOU Metric
-    
-    """
-    
-    #Convert single channels gt masks into one hot encoded vector
-    #Shape: [B, H, W] --> [B,H, W, num_classes]
-    ground_truths = F.one_hot(ground_truths, num_classes=num_classes)
-    
-    #Convert unnormalized predictions into one hot encoded across channels
-    #Shape: [B, H, W] --> [B, H, W, num_classes]
-    predictions = F.one_hot(predictions, num_classes=num_classes)
-    
-    #Intersection: |G ∩ P| Shape: [B, num_classes]
-    intersection = (predictions * ground_truths).sum(dims = dims)
-    
-    #Summation: |G| + |P| Shape: [B, num_classes]
-    summation = (predictions.sum(dims = dims))
-    
-    #Union. Shape: [B, num_classes]
-    union = summation - intersection
-    
-    #IoU Shape: [B, num_classes]
-    iou = intersection / union
-    
-    iou = torch.nan_to_num_(iou, nan = 0.0)
-    
-    #Shape: [batch_size, ]
-    num_classes_present = torch.count_nonzero(summation, dim = 1)
-    
-    #IoU per image
-    #Average over the total number of classes present in the gt and pred
-    #Shape: [batch_size, ]
-    iou = iou.sum(dim = 1) / num_classes_present
-    
-    #Compute mean over remaininh axes (batch and classes)
-    #Shape: Scalar
-    iou_mean = iou.mean()
-    
-    return iou_mean
+
 
 
 
@@ -95,5 +49,66 @@ def dice_coef_loss(predictions: torch.tensor, ground_truth: torch.tensor, num_cl
     
     
     
+    
+
+
+### **************** U^2Net **********###
+
+
+### ***************** ISNet **********###
+bce_loss = nn.BCELoss(size_average=True)
+
+def multi_loss_fusion(preds, target):
+    loss0 = 0.0
+    loss = 0.0
+    
+    for i in range(0, len(preds)):
+        
+        if(preds[i].shape[2]!=target.shape[2] or preds[i].shape[3]!=target.shape[3]):
+            tmp_target = F.interpolate(target, size = preds[i].size()[2:], mode = "bilinear", align_corners=True)
+            loss = loss + bce_loss(preds[i], tmp_target)
+        else: #pred and tar are of same size
+            loss = loss + bce_loss(preds[i], target)
+        
+        if(i==0):
+            loss0 = loss #initial loss
+        
+    return loss0, loss
+
+
+fea_loss = nn.MSELoss(size_average=True) # average over all loss values, i.e. loss of each samples is averaged ??
+kl_loss = nn.KLDivLoss(size_average=True)
+l1_loss = nn.L1Loss(size_average=True)
+smooth_l1_loss = nn.SmoothL1Loss(size_average=True)
+
+#- - - 
+
+def multi_loss_fusion_kl(preds, target, dfs, fs, mode = "MSE"):
+    
+    loss0 = 0.0
+    loss  =0.0
+    
+    for i in range(0, len(preds)):
+        if(preds[i].shape[2]!=target.shape[2] or preds[i].shape[3]!=target.shape[3]):
+            tmp_target = F.interpolate(target, size = preds[i].size()[2:], mode = "bilinear", align_corners=True)
+            loss = loss + bce_loss(preds[i], tmp_target)
+        else: # pred and tar are of same size
+            loss = loss + bce_loss(preds[i], target)
+        
+        if(i==0):
+            loss0 = loss #initial loss
+    
+    for i in range(0, len(preds)):
+        if (mode == 'MSE'):
+            loss = loss + fea_loss(dfs[i], fs[i]) # add the mse loss of features as additional constraints
+        elif (mode == 'KL'):
+            loss = loss + kl_loss(F.log_softmax(dfs[i], dim = 1), F.softmax(fs[i], dim = 1))
+        elif (mode == 'MAE'):
+            loss = loss + l1_loss(dfs[i], fs[i])
+        elif (mode == "SmoothL1"):
+            loss = loss + smooth_l1_loss(dfs[i], fs[i])
+            
+    return loss0, loss
+        
     
     
