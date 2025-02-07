@@ -22,9 +22,11 @@ from torch.utils.tensorboard import SummaryWriter
 from torchmetrics import MeanMetric
 from torchmetrics.classification import MulticlassAccuracy
 
+from engine.seg_losses import multi_bce_loss
+
 from configs.train_config import TrainingConfig
-from utils.plot_metrics import plot_metrics
-from utils.plot_predictions import plot_predictions
+from utils.seg_utils.plot_metrics import plot_metrics
+from utils.seg_utils.plot_predictions import plot_predictions
 
 from uni_vision.pipe.segmentation.engine.seg_losses import dice_coef_loss, mean_iou
 
@@ -36,8 +38,17 @@ reset = f"\033[0m"
 
 class Trainer:
     
-    def __init__(self,  train_config: TrainingConfig, model: nn.Module , train_loader : DataLoader, val_loader: DataLoader, 
-                 optimizer : optim.Optimizer, total_epochs: int, scheduler: Optional[optim.lr_scheduler._LRScheduler] = None): 
+    def __init__(self,  train_config: TrainingConfig, model: nn.Module ,  train_loader : DataLoader, val_loader: DataLoader, 
+                 optimizer : optim.Optimizer, total_epochs: int, scheduler: Optional[optim.lr_scheduler._LRScheduler] = None, model_type = "default", loss_fn=None): 
+        
+        """
+        model_type: Handles the output format for different models accordingly,
+        
+        * Case1 : u^2 net and isnet outputs d1, d2, d3, d4, d5. d6, so add a special case
+        
+        Types: u2net, isnet
+        
+        """
     
         self.model = model
         self.train_loader = train_loader
@@ -46,9 +57,12 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.scaler = torch.cuda.amp.GradScaler('cuda')
+        self.model_type = model_type
         
         #Setup log dir and model ckpt versioning
         self.train_config, _ = setup_logdir(train_config)
+        
+        self.loss_fn = loss_fn if loss_fn else (multi_bce_loss if model_type in ["u2net" , "isnet"] else dice_coef_loss)
 
         #Tensorboard Writer
         self.tb_writer = SummaryWriter(
@@ -76,18 +90,28 @@ class Trainer:
             self.optimizer.zero_grad()
             
             with torch.autocast(device_type=device):
-                outputs = self.model(batch_data) #logits
+                
+                if self.model_type == "isnet":
+                    outputs, fs = self.model(batch_data) #outputs = ds
+                    _, loss = self.model.compute_loss(outputs, target)
+                    pred_idx = outputs[0].detach().argmax(dim=1)
+
             
-                #Have to include focal loss
-                loss = dice_coef_loss(outputs, target, num_classes = num_classes)
+                if  self.model_type == "u2net":
+                    outputs = self.model(batch_data) #logits
+                    _, loss = self.loss_fn(*outputs, target) #unpack
+                    pred_idx = outputs[0].detach().argmax(dim=1)
+                
+                else:
+                    # Have to include focal loss
+                    outputs = self.model(batch_data) #logits
+                    loss = self.loss_fn(outputs, target, num_classes = num_classes)
+                    pred_idx = outputs.detach().argmax(dim = 1)
         
             self.scaler.scale(loss).backward()
             
             self.scaler.step(self.optimizer)
-            self.scaler.update()
-                    
-            #Get the index of max probability
-            pred_idx = outputs.detach().argmax(dim = 1)
+            self.scaler.update()     
             
             mean_iou_metric = mean_iou(pred_idx, target, num_classes = num_classes)
             
@@ -131,11 +155,24 @@ class Trainer:
             
             with torch.no_grad():
                 with torch.autocast(device_type=device):
-                    outputs = self.model(batch_data)
+                    if self.model_type == "isnet":
+                        outputs, fs = self.model(batch_data) #outputs = ds
+                        _, val_loss = self.model.compute_loss(outputs, target)
+                        pred_idx = outputs[0].detach().argmax(dim=1)
+
+                
+                    if  self.model_type == "u2net":
+                        outputs = self.model(batch_data) #logits
+                        _, val_loss = self.loss_fn(*outputs, target) #unpack
+                        pred_idx = outputs[0].detach().argmax(dim=1)
                     
-                    val_loss = dice_coef_loss(outputs, target, num_classes=num_classes)
-            
-            pred_idx = outputs.argmax(dim = 1)
+                    else:
+                        # Have to include focal loss
+                        outputs = self.model(batch_data) #logits
+                        val_loss = self.loss_fn(outputs, target, num_classes = num_classes)
+                        pred_idx = outputs.detach().argmax(dim = 1)
+                
+           
             
             #Calculate Segmentation specific metric (Dice or IoU)
             
@@ -263,28 +300,29 @@ class Trainer:
             valid_acc = epoch_val_acc,
         )
         
+        # ********* Will need to define utilites for segmentation specifics *************************
         
-        plot_metrics(
-            [train_acc, val_acc],
-            ylabel = "Accuracy",
-            ylim = [0.0, 1.1],
-            metric_name = ["Training Accuracy", "Validation Accuracy"],
-            color = ["b", "g"] ,#'b'
-            num_epochs = self.total_epochs,
-            save_name='accuracy_plot'
-        )
+        # plot_metrics(
+        #     [train_acc, val_acc],
+        #     ylabel = "Accuracy",
+        #     ylim = [0.0, 1.1],
+        #     metric_name = ["Training Accuracy", "Validation Accuracy"],``
+        #     color = ["b", "g"] ,#'b'
+        #     num_epochs = self.total_epochs,
+        #     save_name='accuracy_plot'
+        # )
         
-        plot_metrics(
-            [train_loss, val_loss],
-            ylabel = "Loss",
-            ylim = [0.0, 2.0],
-            metric_name = ["Training Loss", "Validation Loss"],
-            color = ["r", "y"],
-            num_epochs=self.total_epochs,
-            save_name='loss_curve_plot'
-        )
+        # plot_metrics(
+        #     [train_loss, val_loss],
+        #     ylabel = "Loss",
+        #     ylim = [0.0, 2.0],
+        #     metric_name = ["Training Loss", "Validation Loss"],
+        #     color = ["r", "y"],
+        #     num_epochs=self.total_epochs,
+        #     save_name='loss_curve_plot'
+        # )
         
-        plot_predictions(model = self.model,data_loader=self.val_loader, class_names=self.val_loader.__classes__, mode = "correct", num_samples = 10)
+        # plot_predictions(model = self.model,data_loader=self.val_loader, class_names=self.val_loader.__classes__, mode = "correct", num_samples = 10)
         
         return history
             

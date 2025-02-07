@@ -53,10 +53,25 @@ def dice_coef_loss(predictions: torch.tensor, ground_truth: torch.tensor, num_cl
 
 
 ### **************** U^2Net **********###
-
-
-### ***************** ISNet **********###
 bce_loss = nn.BCELoss(size_average=True)
+
+def multi_bce_loss(d0, d1, d2, d3, d4, d5, d6, labels_v):
+    
+    loss0 = bce_loss(d0, labels_v) 
+    loss1 = bce_loss(d1, labels_v)
+    loss2 = bce_loss(d2, labels_v)
+    loss3 = bce_loss(d3, labels_v)
+    loss4 = bce_loss(d4, labels_v)
+    loss5 = bce_loss(d5, labels_v)
+    loss6 = bce_loss(d6, labels_v)
+    
+    loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss5 + loss6
+    
+    return loss0, loss
+    
+    
+### ***************** ISNet **********###
+
 
 def multi_loss_fusion(preds, target):
     loss0 = 0.0
@@ -73,7 +88,7 @@ def multi_loss_fusion(preds, target):
         if(i==0):
             loss0 = loss #initial loss
         
-    return loss0, loss
+    return loss0, losslossmuti_bce_loss_fusion
 
 
 fea_loss = nn.MSELoss(size_average=True) # average over all loss values, i.e. loss of each samples is averaged ??
