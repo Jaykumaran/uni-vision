@@ -2,14 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  
 
+# **************** Google 2019 ***********************
 
-
+# HardSwish is an approximation of Swish func which involve expensive signmoid calculation.
+# It removes the exponential function of Swish and replace with a simple F.relu6 for hardware efficiency
 class HardSwish(nn.Module):
     def __init__(self, inplace = True):
         super(HardSwish, self).__init__()
         self.inplace = inplace
-        
+    
+    # For computational efficiency     
     def forward(self, x):
+        # F.relu6 to handle negative values for smooth interpolation in -ve
         return x * F.relu6(x + 3.0) / 6. #relu with a upper bound value
     
     
