@@ -1,3 +1,6 @@
+# https://github.com/facebookresearch/sam2/blob/main/sam2/build_sam.py
+
+
 import logging
 import os
 import torch
@@ -6,8 +9,6 @@ from hydra.utils import instantiate
 from omegaconf import OmegaConf
 import sam2
 from huggingface_hub import hf_hub_download
-
-
 
 
 
