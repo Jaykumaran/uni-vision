@@ -41,7 +41,7 @@ class SAM2ImagePredictor:
         
         
         # Predictor state
-        self.is_image_ste = False
+        self.is_image_set = False
         self._features = None
         self._origh_hw = None
         # Whether the predictor is set for single image or a batch of images
@@ -120,8 +120,58 @@ class SAM2ImagePredictor:
         logging.info("Image embeddings computed")
 
         
+    @torch.no_grad()    
+    def set_image_batch(
+        self,
+        image_list: List[np.ndarray],
+        ) -> None:
+        
+        """
+          Calculates the image embeddings for the provided image batch, allowing masks to be predicted with the predict_batch method.
+        
+        Arguments:
+            image (List[np.ndarray]): in RGB format. The Image should be in HWC format if np.ndarray or WHC format if PIL Image
+                                                            with pixel values in [0, 255]
+        """
+        
+        self.reset_predictor()
+        assert isinstance(image_list, list) # to check whether its a list type
+        self._origh_hw = []
+        
+        for image in image_list:
+            assert isinstance(
+                image, np.ndarray
+            ), "Images are expected to be an np.ndarray in RGB format, and of shape HWC"
+            self._origh_hw.append(image.shape[:2])
+            
+        # Transform the image to the form expected by the model
+        img_batch = self._transforms.forward_batch(image_list)
+        img_batch = img_batch.to(self.device)
+        batch_size = img_batch.shape[0]
+        assert(
+            len(img_batch.shape) == 4 and img_batch.shape[1] ==3 
+        ), f"img_batch must be of size Bx3xHxW, got {img_batch.shape}"
+        logging.info("Computing the image embedddings for the provided images...")
+        backbone_out = self.model.forward_image(img_batch)
+        _, vision_features, _, _ = self.model._prepare_backbone_features(backbone_out)
+        # Add no_mem_embed, which is added to the lowest resolution feature map during training on videos
+        if self.model.directly_add_no_mem_embed:
+            vision_features[-1] = vision_features[-1] + self.model.no_mem_embed
+        
+        features = [
+            feature.permute(1, 2, 0).view(batch_size, -1, *feature_size)
+            for feature, feature_size in zip(vision_features[::-1], self._bb_feature_sizes[::-1])
+        ][::-1]
+        self._features = {"image_embed": features[-1], "high_res_features": features[:-1]}
+        self.is_image_set = True
+        self._is_batch = True
+        logging.info("Image embedding computed")
+    
+    
         
         
+        
+    
         
         
         
