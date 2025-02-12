@@ -168,8 +168,77 @@ class SAM2ImagePredictor:
         logging.info("Image embedding computed")
     
     
+    
+    def predict_batch(
+        self,
+        point_coords_batch: List[np.ndarray] = None,
+        point_labels_batch: List[np.ndarray] = None,
+        box_batch: List[np.ndarray] = None,
+        mask_input_batch: List[np.ndarray] = None,
+        multimask_output: bool = True,
+        return_logits: bool = False,
+        normalize_coords = True
+         ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
+        
+        """
+        This function is similar to predict(...), however it is used in batched mode, when the model is expected to generate predictions on multiple images.
+        It returns a tuple of lists of masks, ious, and low_res_masks_logits.
+        """
         
         
+        assert self._is_batch, "This function should only be used when in batched mode"
+        if not self.is_image_set:
+            raise RuntimeError(
+                "An image must be set with .set_image_batch(...) before mask prediction"
+            )
+        num_images = len(self._features["image_embed"])
+        all_masks = []
+        all_ious = []
+        all_low_res_masks = []
+        
+        for img_idx in range(num_images):
+            
+            # Transforms input prompts
+            point_coords = (
+                point_coords_batch[img_idx] if point_coords_batch is not None else None
+            )
+            
+            point_labels = (
+                point_labels_batch[img_idx] if point_labels_batch is not None else None
+            )
+            
+            box = box_batch[img_idx] if box_batch is not None else None
+            mask_input = (
+                mask_input_batch[img_idx] if mask_input_batch is not None else None
+            )
+            mask_input, unnorm_coords, labels, unnorm_box = self._prep_prompts(
+                point_coords,
+                point_labels,
+                box,
+                mask_input,
+                normalize_coords,
+                img_idx = img_idx
+            )
+            
+            masks, iou_predictions, low_res_masks = self._predict(
+                unnorm_coords,
+                labels,
+                unnorm_box,
+                mask_input,
+                multimask_output,
+                return_logits = return_logits,
+                img_idx = img_idx
+            )
+            
+            masks_np = masks.squeeze(0).float().detach().cpu().numpy()
+            iou_predictions_np = (
+                iou_predictions.squeeze(0).float().detach().cpu().numpy()
+            )
+            all_masks.append(masks_np)
+            all_ious.append(iou_predictions_np)
+            all_low_res_masks.append(all_low_res_masks)
+            
+        return all_masks, all_ious, all_low_res_masks
         
     
         
