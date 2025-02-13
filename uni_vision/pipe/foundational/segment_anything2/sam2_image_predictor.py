@@ -240,9 +240,6 @@ class SAM2ImagePredictor:
             
         return all_masks, all_ious, all_low_res_masks
         
-    
-        
-        
 
 
     def predict(
@@ -356,3 +353,39 @@ class SAM2ImagePredictor:
                     mask_input = mask_input[None, :, : , :]
             
             return mask_input, unnorm_coords, labels, unnorm_box
+    
+    
+    def get_image_embedding(self) -> torch.Tensor:
+        """
+        Returns the image embeddings for the currently set image, with 
+        shape 1xCxHxW, where C is the embedding dimesion and (H,W) are
+        the embedding spatial dimension of SAM (typically C = 256, H=W=64)
+        """
+        
+        if not self._is_image_set:
+            raise RuntimeError(
+                "An image must be set with .set_image(...) to generate embedding"
+            )
+            
+        assert (
+            self._features is not None
+        ), "Features must exist if an image has been set"
+        
+        
+        return self._features['image_embed']
+    
+    @property
+    def device(self) -> torch.device:
+        return self.model.device
+    
+
+    def reset_predictor(self) -> None:
+        """
+        Reset the image embeddings and other state variables
+        """
+        
+        self._is_image_set = False
+        self._features = None
+        self._origh_hw = None
+        self._is_batch = False
+        
