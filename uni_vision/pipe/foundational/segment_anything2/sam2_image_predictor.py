@@ -243,4 +243,116 @@ class SAM2ImagePredictor:
     
         
         
+
+
+    def predict(
+        self,
+        point_coords: Optional[np.ndarray] = None,
+        point_labels: Optional[np.ndarray] = None,
+        box: Optional[np.ndarray] = None,
+        mask_input: Optional[np.ndarray] = None,
+        multimask_output: bool = True,
+        return_logits: bool = False,
+        normalize_coords = True
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         
+        """
+        Predicts masks for the given input prompts, using the currently set image
+        
+        Arguments:
+            point_coords (np.ndarray or None): A Nx2 array of point prompts to the model.Each point is in (X,Y) in pixels.
+            
+            point_labels (np.ndarray or None): A length N array of labels for the point prompts. 1 indicates a foreground point and 0 indicates a bg point.
+            
+            box (np.ndarray or None): A length 4 array given a box prompt to the model, XYXY format.
+            
+            mask_input (np.ndarray): A low resolution mask input to the model, typically coming from  previous iteration. Has form 1xHxW where for SAM, H=W=256.
+            
+            multimask_output (bool): If true, the model will return three masks. For ambiguous input prompts (such as single click), this often will produce 
+                                     better masks than a single prediction. If only a single mask is needed, the model's predicted quality score can be used to select 
+                                     the best mask. For non-ambiguous prompts, such as multiple input prompts, multimask_output = False can give better results.
+            return_logits (bool): If true, returns un-thresholded mask logits instead of binary mask.
+            
+            normalize_coords (bool): If true, the point coordinates will be normalized to the range [0, 1] and point_coords is expected to be w.r.t image dimensions
+            
+    
+        Returns:
+        
+            (np.ndarray): The output masks in CxHxW format, where C is the number of masks, and (H, W) is the original image size.
+            
+            (np.ndarray): An array of length C containing the model's predictions for the quality of each mask. # IoU
+            
+            (np.ndarray): An array of shape CxHxW, where C is the number of masks and H=W=256. These low resolution logits can be passed to a subsequent iteration
+                          as mask input.
+            
+        """
+        
+        if not self._is_image_set:      
+            raise RuntimeError(
+                "An image must be set with .set_image(...) before mask prediction"
+            )
+        
+        # Transform input prompts
+        
+        mask_input, unnorm_coords, labels, unnorm_box = self._prep_prompts(
+            point_coords, point_labels, box, mask_input, normalize_coords
+        )
+        
+        
+        masks, iou_predictions, low_res_masks = self._predict(
+            unnorm_coords,
+            labels,
+            unnorm_box,
+            mask_input,
+            multimask_output, 
+            return_logits = return_logits
+        )
+        
+        
+        masks_np = masks.squeeze(0).float().detach().cpu().numpy()
+        iou_predictions_np = iou_predictions.squeeze(0).float().detach().cpu().numpy()
+        low_res_masks_np = low_res_masks.squeeze(0).float().detach().cpu().numpy()
+            
+        return masks_np, iou_predictions_np, low_res_masks
+        
+        
+        def _prep_prompts(
+            self, point_coords, point_labels, box, mask_logits, normalize_coords, img_idx = -1
+        ):
+            unnorm_coords, labels, unnorm_box, mask_input = None, None, None, None
+            if point_coords is not None:
+                assert(
+                    point_labels is not None # check if point labels i.e. 0, 1 is provided when point coords are passed
+                ), "point_labels must be supplied if point_coords is applied."
+                
+                point_coords = torch.as_tensor(
+                    point_coords, dtype = torch.float, device = self.device
+                )
+                
+                unnorm_coords = self._transforms.transform_coords(
+                    point_coords, normalize = normalize_coords, orig_hw = self._orig_hw[img_idx]
+                )
+                
+                labels = torch.as_tensor(
+                    point_labels, dtype=torch.int, device=self.device
+                )
+                
+                if len(unnorm_coords.shape) == 2:
+                    unnorm_coords, labels = unnorm_coords[None, ...], labels[None, ...]
+                    
+            
+            if box is not None:
+                box = torch.as_tensor(box, dtype = torch.float, device= self.device)
+                unnorm_box = self._transforms.transform_boxes(
+                    box, normalize = normalize_coords, orig_hw = self._orig_hw[img_idx]
+                ) # Bx2x2
+            
+            if mask_logits is not None:
+                mask_input = torch.as_tensor(
+                    mask_logits, dtype=torch.float, device=self.device
+                )
+                
+                if len(mask_input.shape) == 3:
+                    mask_input = mask_input[None, :, : , :]
+            
+            return mask_input, unnorm_coords, labels, unnorm_box
