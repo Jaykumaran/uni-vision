@@ -209,4 +209,41 @@ class SAM2AutomaticMaskGenerator:
             ann = {
                 "segmentation": mask_data["segmentations"][idx],
                 
+                "area": area_from_rle(mask_data["rles"][idx]),
+                "bbox": box_xyxy_to_xywh(mask_data["boxes"][idx]).tolist(),
+                "predicted_iou": mask_data["iou_preds"][idx].item(),
+                "point_coords": [mask_data["points"][idx].tolist()],
+                "stability_score": mask_data["stability_score"][idx].item(),
+                "crop_box": box_xyxy_to_xywh(mask_data["crop_boxes"][idx].tolist())
+                
             }
+            curr_anns.append(ann)
+            
+        return curr_anns
+
+    def _generate_masks(self, image: np.ndarray) -> MaskData:
+        orig_size = image.shape[:2]
+        crop_boxes, layer_idxs = generate_crop_boxes(
+            orig_size, self.crop_n_layers, self.crop_overlap_ratio
+        )
+        
+        # Iterate over image crops
+        data = MaskData()
+        for crop_box, layer_idx in zip(crop_boxes, layer_idxs):
+            crop_data = self._process_crop(image, crop_box, layer_idx, orig_size)
+            data.cat(crop_data)
+            
+        # Remove duplicate masks between crops
+        if len(crop_boxes) > 1:
+            # Prefer masks from smaller crops
+            scores = 1 / box_area(data["crop_boxes"])
+            scores = scores.to(data["boxes"].device)
+            keep_by_nms = batched_nms(
+                data["boxes"].float(),
+                scores,
+                torch.zeros_like(data["boxes"][:, 0]),  # categories
+                iou_threshold=self.crop_nms_thresh
+            )
+            data.filter(keep_by_nms)
+        data.to_numpy()
+        return data
