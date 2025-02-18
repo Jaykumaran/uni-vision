@@ -393,6 +393,85 @@ class SAM2AutomaticMaskGenerator:
             del data["masks"]
             
             return data
+        
+    
+    @staticmethod
+    def postprocess_small_regions(
+        mask_data: MaskData, min_area: int, nms_thresh: float
+    ) -> MaskData:
+        """   
+        Removes small disconnected regions and holes in masks, then reruns box NMS to remove 
+        any duplicates.
+        
+        Edits mask_data in place.
+        
+        Requires OpenCV as dependency
+        """
+        
+        if len(mask_data["rles"]) == 0:
+            return mask_data
+        
+        # Filter small disconnected regions and holes
+        new_masks = []
+        scores = []
+        for rle in mask_data["rles"]:
+            mask = rle_to_mask(rle)
+            
+            mask, changed = remove_small_regions(mask, min_area, mode = "holes")
+            unchanged = not changed
+            mask, unchanged = remove_small_regions(mask, min_area, mode = "islands")
+            unchanged = unchanged and not changed  # all those that haven't changed in both modes -> holes and islands 
+            
+            new_masks.append(torch.as_tensor(mask).unsqueeze(0))
+            # Give score = 0 to changed masks and score = 1 to unchanged masks
+            # so NMS will prefers that didn't need posprocessing
+            scores.append(float(unchanged))
+            
+        # Recalculate boxes and remove any new duplicates
+        masks = torch.cat(new_masks, dim=0)
+        boxes = batched_mask_to_box(masks)
+        keep_by_nms = batched_nms(
+            boxes.float(),
+            torch.as_tensor(scores),
+            torch.zeros_like(boxes[:, 0]), # categories
+            iou_threshold=nms_thresh
+        )
+        
+        
+        # Only calculate RLEs for masks that have changed
+        for i_mask in keep_by_nms:
+            if scores[i_mask] == 0.0:   # score = 0 for masks that have changed
+                mask_torch = masks[i_mask].unsqueeze(0)
+                mask_data["rles"][i_mask] = mask_to_rle_pytorch(mask_torch)[0]
+                mask_data["boxes"][i_mask] = boxes[i_mask] # update res directly
+        mask_data.filter(keep_by_nms)
+        
+        return mask_data
+    
+    
+    def refine_with_m2m(self, points, point_labels, low_res_masks, points_per_batch):
+        new_masks = []
+        new_iou_preds = []
+        
+        
+        for cur_points, cur_point_labels, low_res_mask in batch_iterator(
+            points_per_batch, points, point_labels, low_res_masks
+        ):
+            best_masks, best_iou_preds, _ = self.predictor._predict(
+                cur_points[:, None, :],
+                cur_point_labels[:, None],
+                mask_input = low_res_mask[:, None, :],
+                multimask_output = False,
+                return_logits = True
+            )
+            
+            new_masks.append(best_masks)
+            new_iou_preds.append(best_iou_preds)
+        
+        masks = torch.cat(new_masks, dim = 0)
+        return masks, torch.cat(new_iou_preds, dim = 0)
+
+        
             
                 
         
