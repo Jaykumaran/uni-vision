@@ -299,8 +299,80 @@ def load_video_frames_from_jpg_images(
     return images, video_height, video_width
          
          
-                
-            
+
+def load_video_frames_video_file(
+    video_path,
+    image_size,
+    offload_video_to_cpu,
+    img_mean = (0.485, 0.456, 0.406),
+    img_std = (0.229, 0.224, 0.225),
+    compute_device = torch.device("cuda")
+):
+    """Load the video frames from the video file"""
+    import decord  # an efficient video loader with smart shuffling
+    
+    img_mean = torch.tensor(img_mean, dtype = torch.float32)[:, None, None]
+    img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
+    # Get the original video heigh and width
+    decord.bridge.set_bridge("torch")
+    
+    video_height, video_width, _ = decord.VideoReader(video_path).next().shape
+    # Iterate over all frames in the video
+    images = []
+    for frame in decord.VideoReader(video_path, width = image_size, height = image_size):
+        images.append(frame.permute(2, 0, 1))
+    
+    
+    images = torch.stack(images, dim = 0).float() / 255.0
+    if not offload_video_to_cpu:
+        images = images.to(compute_device)
+        img_mean = img_mean.to(compute_device)
+        img_std = img_std.to(compute_device)
+    
+    # normalize by mean and std
+    images -= img_mean
+    images /= img_std
+    return images, video_height, video_width
+
+def fill_holes_in_mask_scores(mask, max_area):
+    """  
+    A post processor to fill small holes in mask scores with area under `max_area`.
+    """
+    # Holes are those connected components in the background with area <= self.max_area
+    # (background regions are those with mask scores <= 0)
+    
+    assert max_area > 0, "max_area must be positive"
+    
+    input_mask = mask
+    try:
+        labels, areas = get_connected_components(mask <= 0)
+        is_hole = (labels > 0) & (areas <= max_area)
+        # We fill holes with a small positive mask score (0.1) to change them to foreground.
+        mask = torch.where(is_hole, 0.1, mask)
+    except Exception as e:
+        # Skip the  post-processing step on removing small holes if the CUDA kernel fails
+        warnings.warn(
+            f"{e}\n\nSkipping the post-processing step due to the error above. You can"
+            "still use SAM 2 and it's OK to ignore the error above, although some post processing"
+            "functionality may be limited (which doesn't affect the results in most cases; see)"
+            "https://github.com/facebookresearch/sam2/blob/main/INSTALL.md",
+            category=UserWarning,
+            stacklevel=2,
+        )
+        mask = input_mask
+    
+    return mask
+
+
+def concat_points(old_point_inputs, new_points, new_labels):
+    """Add new points and labels to previous point inputs (add at the end)."""
+    if old_point_inputs is None:
+        points, labels = new_points, new_labels
+    else:
+        points = torch.cat([old_point_inputs["point_coords"], new_points], dim=1)
+        labels = torch.cat([old_point_inputs["point_labels"], new_labels], dim=1) 
+    
+    return {"point_coords": points, "point_labels": labels}           
                  
         
 
