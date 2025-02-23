@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from logger_tb.tb_log import setup_logdir
+from uni_vision.logger_tb.tb_log import setup_logdir
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
@@ -19,9 +19,9 @@ from torch.utils.tensorboard import SummaryWriter
 from torchmetrics import MeanMetric
 from torchmetrics.classification import MulticlassAccuracy
 
-from configs.train_config import TrainingConfig
-from utils.plot_metrics import plot_metrics
-from utils.plot_predictions import plot_predictions
+from uni_vision.configs.train_config import TrainingConfig
+from ..utils.plot_metrics import plot_metrics
+from ..utils.plot_predictions import plot_predictions
 
 
 bold = f"\033[1m"
@@ -51,16 +51,22 @@ class Trainer:
         )
         
     
-    def train_one_epoch(self, epoch_idx: int, device: Union[str, int]  = "cuda" , class_weight: Optional[torch.tensor ]= None):
+    def train_one_epoch(self, epoch_idx: int, device: Union[str, int, torch.device]  = "cuda" , class_weight: Optional[torch.tensor ]= None):
+        
+        if isinstance(device, int):
+            device = torch.device(f"cuda: {device}")
+        elif isinstance(device, str):
+            device = torch.device(device)
+        
         
         self.model.train()
         num_classes = self.train_loader.dataset.__num_classes__
-        self.scaler = torch.cuda.amp.GradScaler('cuda')
+        self.scaler = torch.amp.GradScaler()
 
         acc_metric = MulticlassAccuracy(num_classes = num_classes, average = "micro")
         mean_metric = MeanMetric()
         
-        status = f"Train:\t{bold} Epoch: {epoch_idx} / {self.total_epochs}{reset}"
+        status = f"Train:\t{bold} Epoch: {epoch_idx}/{self.total_epochs}{reset}"
         prog_bar = tqdm(self.train_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         prog_bar.set_description(status)
         
@@ -95,7 +101,7 @@ class Trainer:
             acc_metric.update(pred_idx.cpu(), target.cpu())
             
             #Update progress bar description
-            step_status = status + f"\tLoss: {mean_metric.compute():.4f}, Acc: {acc_metric.compute():4f}"
+            step_status = status + f"\tLoss: {mean_metric.compute():.4f}, Acc: {acc_metric.compute():.4f}"
             prog_bar.set_description(step_status)
             
     
@@ -108,14 +114,18 @@ class Trainer:
         return train_loss, train_acc
     
     
-    def validate(self, epoch_idx: int, device: str  = "cuda"):
+    def validate(self, epoch_idx: int, device: Union[str, int, torch.device]  = "cuda"):
         
-       
+        if isinstance(device, int):
+            device = torch.device(f"cuda: {device}")
+        elif isinstance(device, str):
+            device = torch.device(device)
+            
         num_classes = self.val_loader.dataset.__num_classes__
         acc_metric = MulticlassAccuracy(num_classes = num_classes, average='micro')
         mean_metric = MeanMetric()
         
-        status = f"Valid:\t{bold}Epoch: {epoch_idx}/ {self.total_epochs}{reset}"
+        status = f"Valid:\t{bold} Epoch: {epoch_idx}/{self.total_epochs}{reset}"
         prog_bar = tqdm(self.val_loader, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         
         prog_bar.set_description(status)
@@ -126,7 +136,7 @@ class Trainer:
             
             self.model.eval()
             with torch.no_grad():
-                with torch.autocast(device_type=device):
+                with torch.autocast(device_type=str(device)):
                 
                   outputs = self.model(batch_data)
             
@@ -155,12 +165,16 @@ class Trainer:
         
         
     def run(self,
-        DEVICE: torch.device, 
+        DEVICE: torch.device | str, 
     ) -> dict:
-        
+    
+        DEVICE = torch.device(DEVICE) if isinstance(DEVICE, str) else DEVICE
         
         best_loss = torch.tensor(np.inf) #largest possible value from there descrease as it has to be minimum
         best_weights = None
+        
+        best_acc = torch.tensor(-np.inf)
+        best_epoch = None # Start with the first epoch
         
         
         #epoch train/val loss
@@ -180,12 +194,15 @@ class Trainer:
             
             val_loss, val_acc = self.validate(epoch_idx = epoch + 1, device = DEVICE)
             
+            train_loss, train_acc = float(train_loss), float(train_acc)
+            val_loss, val_acc = float(val_loss), float(val_acc)
+            
             
             train_loss_stat = f"{bold}Train Loss: {train_loss:.4f}{reset}"
-            train_acc_stat = f"{bold}Train Acc: {train_acc:.4f}{reset}"
+            train_acc_stat =  f"{bold}Train Acc: {train_acc:.4f}{reset}"
             
-            val_loss_stat = f"{bold}Val Loss: {val_loss:.4f}{reset}"
-            val_acc_stat = f"{bold}Val Acc: {val_acc:.4f}{reset}"
+            val_loss_stat = f"{bold}Val Loss  : {val_loss:.4f}{reset}"
+            val_acc_stat =  f"{bold}Val Acc  : {val_acc:.4f}{reset}"
             
             print(f"\n{train_loss_stat:<30}{train_acc_stat}")
             print(f"{val_loss_stat:<30}{val_acc_stat}")
@@ -214,7 +231,10 @@ class Trainer:
             
             if val_loss < best_loss:
                 best_loss = val_loss
-                print(f"Model Improved ... Saving Model ...", end = "")
+                best_acc = val_acc
+                best_epoch = epoch + 1
+                
+                print(f"Model Improved ... Saving Model ...💾 ...", end = "")
                 best_weights = copy.deepcopy(self.model.state_dict())   
                 
                 checkpoint_path = os.path.join(
@@ -227,9 +247,11 @@ class Trainer:
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "epoch": epoch + 1,  
                 }, checkpoint_path)
-                print(F"Model Improved: Saved to {checkpoint_path}✅.\n")
+                print(f"...: Saved to {checkpoint_path}✅ ...\n")
+            
+            print(f"{'=' * 72}\n")
                 
-        print(f"Total time: {(time.time() - t_begin):.2f}s, Best Loss: {best_loss:.3f}")    
+        print(f"Total time: {(time.time() - t_begin):.2f}s, Best Val Loss: {best_loss:.3f}, Best Val Acc: {best_acc:.2f} ; At Epoch: {best_epoch}")    
 
   
                
@@ -245,7 +267,8 @@ class Trainer:
         
         
         plot_metrics(
-            [train_acc, val_acc],
+            self.train_config,
+            [epoch_train_acc, epoch_val_acc],
             ylabel = "Accuracy",
             ylim = [0.0, 1.1],
             metric_name = ["Training Accuracy", "Validation Accuracy"],
@@ -255,7 +278,8 @@ class Trainer:
         )
         
         plot_metrics(
-            [train_loss, val_loss],
+            self.train_config,
+            [epoch_train_loss, epoch_val_loss],
             ylabel = "Loss",
             ylim = [0.0, 2.0],
             metric_name = ["Training Loss", "Validation Loss"],
@@ -264,8 +288,14 @@ class Trainer:
             save_name='loss_curve_plot'
         )
         
-        plot_predictions(model = self.model,data_loader=self.val_loader, class_names=self.val_loader.__classes__, mode = "correct", num_samples = 10)
-        
+        plot_predictions(self.train_config, 
+                         model = self.model,
+                         data_loader=self.val_loader, 
+                         class_names=self.val_loader.
+                         dataset.__classes__, 
+                         mode = "all",
+                         num_samples = 10)    
+            
         return history
             
             

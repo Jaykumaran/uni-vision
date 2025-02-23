@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
-from image_transforms import common_transforms
+
+from .image_transforms import common_transforms
 
 #Usage:
 # ********* CSV ************
@@ -21,16 +22,16 @@ from image_transforms import common_transforms
 class CustomDatasetClass(Dataset):
     """Supports either a csv file or root dir of the dataset folder"""
     
-    def __init__(self, input_path, root_dir = None, transform = None, img_size = (224,224)):
+    def __init__(self, input_path, transform = None, img_size = (224,224)):
         
         if transform is not None:
-            self.transform = transform(img_size)
+            self.transform = transform
         else:
             self.transform = common_transforms(img_size)
         
         if os.path.isfile(input_path) and input_path.endswith('.csv'):
             self.data_frame = pd.read_csv(input_path)
-            self.root_dir = root_dir
+            self.root_dir =  os.path.dirname(input_path)
                 
             #Ensure root dir is specified when using a CSV File
             if not self.root_dir:

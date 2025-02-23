@@ -1,6 +1,6 @@
 from torch.utils.tensorboard import SummaryWriter
 import os
-from configs.train_config import TrainingConfig
+from uni_vision.configs.train_config import TrainingConfig
 
 def setup_logdir(training_config: TrainingConfig):
     

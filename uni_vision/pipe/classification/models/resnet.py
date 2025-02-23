@@ -1,6 +1,7 @@
 import  torch
 import torch.nn as nn   
-import torch.nn.functional as F   
+import torch.nn.functional as F 
+import torchvision.models as models  
 
 
 
@@ -35,7 +36,7 @@ class BasicBlock(nn.Module):
         return out
     
 
-class BottleNeck:
+class BottleNeck(nn.Module):
     
     #default dilation
     expansion = 4
@@ -127,20 +128,121 @@ class ResNet(nn.Module):
         return x
     
 
-def resnet18():
-    return ResNet(block = BasicBlock, layers = [2, 2, 2, 2]) #num_layers
+def resnet18(pretrained = True):
+    
+    model = ResNet(block = BasicBlock, layers = [2, 2, 2, 2]) #num_layers
+    
+    if pretrained:
+        
+        # Load pretrained weights from torchvision
+        pretrained_dict = models.resnet18(weights = models.ResNet18_Weights.IMAGENET1K_V1).state_dict() # resnet18 has only v1
+        
+        # Get the state dict of the model
+        model_dict  = model.state_dict()
+        
+        # Filter out unncessary keys and update the matching ones
+        pretrained_dict = {k:v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+        
+        model_dict.update(pretrained_dict)
+        
+        model.load_state_dict(model_dict)
+        
 
-def resnet34():
-    return ResNet(block = BasicBlock, layers = [3, 4, 6, 3])
+    return model
 
-def resnet50():
-    return ResNet(block = BottleNeck, layers = [3, 4, 6, 3])
+def resnet34(pretrained = True):
+    
+    """ Uses Basic Block and has layers 3, 4, 6, 3"""
+    
+    model =  ResNet(block = BasicBlock, layers = [3, 4, 6, 3])
+    
+    if pretrained:
 
-def resnet101():
-    return ResNet(block = BottleNeck, layers = [3, 4, 23, 3])
+        # Load pretrained weights from torchvision
+        pretrained_dict = models.resnet34(weights = models.ResNet34_Weights.IMAGENET1K_V1).state_dict() # resnet34 has only v1
+        
+        # Get the state dict of the model
+        model_dict  = model.state_dict()
+        
+        # Filter out unncessary keys and update the matching ones
+        pretrained_dict = {k:v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+        
+        model_dict.update(pretrained_dict)
+        
+        model.load_state_dict(model_dict)
+    
 
-def resnet151():
-    return ResNet(block = BottleNeck, layers = [3, 8, 36, 3])
+    return model
+
+
+def resnet50(pretrained = True):
+    
+    """Uses BottlNeck and has layers 3, 4, 6, 3"""
+    
+    model =  ResNet(block = BottleNeck, layers = [3, 4, 6, 3])
+
+    if pretrained:
+
+        # Load pretrained weights from torchvision
+        pretrained_dict = models.resnet50(weights = models.ResNet50_Weights.IMAGENET1K_V2).state_dict() # resnet50 has v2
+        
+        # Get the state dict of the model
+        model_dict  = model.state_dict()
+        
+        # Filter out unncessary keys and update the matching ones
+        pretrained_dict = {k:v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+        
+        model_dict.update(pretrained_dict)
+        
+        model.load_state_dict(model_dict)
+        
+
+    return model
+
+
+def resnet101(pretrained = True):
+    
+    model =  ResNet(block = BottleNeck, layers = [3, 4, 23, 3])
+    
+    if pretrained:
+
+        # Load pretrained weights from torchvision
+        pretrained_dict = models.resnet101(weights = models.ResNet101_Weights.IMAGENET1K_V2).state_dict() # resnet101 has v2
+        
+        # Get the state dict of the model
+        model_dict  = model.state_dict()
+        
+        # Filter out unncessary keys and update the matching ones
+        pretrained_dict = {k:v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+        
+        model_dict.update(pretrained_dict)
+        
+        model.load_state_dict(model_dict)
+        
+
+    return model
+
+def resnet152(pretrained = True):
+    
+    model  = ResNet(block = BottleNeck, layers = [3, 8, 36, 3])
+    
+    if pretrained:
+
+        # Load pretrained weights from torchvision
+        pretrained_dict = models.resnet152(weights = models.ResNet152_Weights.IMAGENET1K_V2).state_dict() # resnet152 has v2
+        
+        # Get the state dict of the model
+        model_dict  = model.state_dict()
+        
+        # Filter out unncessary keys and update the matching ones
+        pretrained_dict = {k:v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+        
+        model_dict.update(pretrained_dict)
+        
+        model.load_state_dict(model_dict)
+    
+
+    return model
 
 
         
