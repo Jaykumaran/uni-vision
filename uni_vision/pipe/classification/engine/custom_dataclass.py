@@ -14,7 +14,7 @@ from .image_transforms import common_transforms
 
 #Usage:
 # ********* CSV ************
-#dataset_csv = CustomDatasetClass(input_path="data.csv", root_dir="images", transform=ToTensor())
+#dataset_csv = CustomDatasetClass(input_path="data.csv", transform=ToTensor())
 # ******** ImageFolder ***********
 #dataset_folder = CustomDatasetClass(input_path="data_folder", transform=ToTensor())
 

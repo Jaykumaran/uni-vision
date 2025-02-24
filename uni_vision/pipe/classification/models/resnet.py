@@ -3,7 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F 
 import torchvision.models as models  
 
+# You may wonder what's the point of rewritting the model when the weights are being loaded from torchvision.
+# This helps me in understanding the layers, Kinda my practice session.
 
+# You may totally skip this and directly load models from torchvision.
+# Will think upon what are the improvements that i can bring to make it more meaningful,,,,
 
 
 class BasicBlock(nn.Module):

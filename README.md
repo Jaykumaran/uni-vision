@@ -22,6 +22,7 @@ Design inspirations and starter code have been generously borrowed from:
 - [Torchvision](https://github.com/pytorch/vision)
 - [Timm](https://github.com/huggingface/pytorch-image-models/tree/main)
 - [HuggingFace](https://github.com/huggingface/transformers)
+- [FacebookResearch](https://github.com/facebookresearch/)
 
 ---
 
