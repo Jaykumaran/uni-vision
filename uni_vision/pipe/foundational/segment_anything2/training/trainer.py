@@ -133,5 +133,109 @@ class LoggingConf:
     log_batch_stats: bool = False
     
 
-
+class Trainer:
+    """
+    Trainer supporting the DDP training strategies
+    """
+    
+    EPSILON = 1e-8
+    
+    def __init__(
+        self,
+        *, # the order of these args can change at any time, so they are keyword only,
+        data: Dict[str, Any],
+        model: Dict[str, Any],
+        logging: Dict[str, Any],
+        checkpoint: Dict[str, Any],
+        max_epochs: int,
+        mode: str = "train",
+        acclerator: str = "cuda",
+        seed_value: int = 123,
+        val_epoch_freq: int = 1,
+        distributed: Dict[str, bool] = None,
+        cuda: Dict[str, bool] = None,
+        env_variables: Optional[Dict[str, Any]] = None,
+        optim: Optional[Dict[str, Any]] = None,
+        optim_overrides: Optional[List[Dict[str, Any]]] = None,
+        meters: Optional[Dict[str, Any]] = None,
+        loss: Optional[Dict[str, Any]] = None,
+    ):
+        self._setup_env_variables(env_variables)
+        self._setup_timers()
+        
+        
+        self.data_conf = data
+        self.model_conf = model
+        self.logging_conf = LoggingConf(**logging)
+        self.checkpoint_conf = CheckpointConf(**checkpoint).infer_missing()
+        self.max_epochs = max_epochs
+        self.mode = mode
+        self.val_epoch_freq = val_epoch_freq
+        self.optim_conf = OptimConf(**optim) if optim is not None else None
+        self.meters_conf = meters
+        self.loss_conf = loss
+        distributed = DistributedConf(**distributed or {})
+        cuda = CudaConf(**cuda or {})
+        self.where = 0.0
+        
+        self._infer_distributed_backend_if_none(distributed, acclerator)
+        
+        self._setup_device(acclerator)
+        
+        self._setup_torch_dist_and_backend(cuda, distributed)
+        
+        makedir(self.logging_conf.log_dir)
+        setup_logging(
+            __name__,
+            output_dir = self.logging_conf.log_dir,
+            rank = self.rank,
+            log_level_primary = self.logging_conf.log_level_primary,
+            log_level_secondary = self.logging_conf.log_level_secondary
+        )
+        
+        set_seeds(seed_value, self.max_epochs, self.distributed_rank)
+        log_env_variables()
+        
+        assert(
+            is_dist_avail_and_initialized
+        ), "Torch distributed needs to be initialized before calling the trainer."
+        
+        
+        self._setup_components() # Except Optimizer everything is setup here.
+        self._move_to_device()
+        self._construct_optimizers()
+        self._setup_dataloaders()
+        
+        
+        self.time_elapsed_meter = DurationMeter("Time Elapsed", self.device, ":.2f")
+        
+        if self.checkpoint_conf.resume_from is not None:
+            assert os.path.exists(
+                self.checkpoint_conf.resume_from
+            ), f"The 'resume_from' checkpoint {self.checkpoint_conf.resume_from} does not exist!"
+            
+            dst = os.path.join(self.checkpoint_conf.save_dir, "checkpoint.pt")
+            if self.distributed_rank == 0 and not os.path.exists(dst):
+                # Copy the `resume_from` checkpoint to the checkpoint folder
+                # if there is not a checkpoint to resume from already there.
+                makedir(self.checkpoint_conf.save_dir)
+                g_pathmgr.copy(self.checkpoint_conf.resume_from, dst)
+            barrier()
+            
+        self.load_checkpoint()
+        self._setup_ddp_distributed_training(distributed, acclerator)
+        barrier()   # in distributed systems, it is a synchronization mechanism used to ensure all processes reach same point in execution before proceeding further.
+        
+    
+    def _setup_timers(self):
+        """
+        Initializes counters for elapsed time and eta.
+        """
+        self.start_time = time.time()
+        self.ckpt_time_elapsed = 0
+        self.est_epoch_time = dict.fromkeys([Phase.TRAIN, Phase.VAL], 0)
+        
+        
+        
+        
     
