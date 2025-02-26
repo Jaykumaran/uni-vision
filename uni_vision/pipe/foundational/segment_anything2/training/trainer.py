@@ -234,7 +234,104 @@ class Trainer:
         self.start_time = time.time()
         self.ckpt_time_elapsed = 0
         self.est_epoch_time = dict.fromkeys([Phase.TRAIN, Phase.VAL], 0)
+     
+     
+     
+    def _get_meters(self, phase_filters = None):
+        if self.filters is None:
+            return {}
+        meters =   {} 
         
+        for phase, phase_meters in self.meters.items():
+            if phase_filters is not None and phase not in phase_filters:
+                continue
+            for key, key_meters in phase_meters.items():
+                if key_meters is None:
+                    continue
+                for name, meter in key_meters.items():
+                    meters[f"{phase}_{key}/{"name"}"] = meter
+        return meters
+    
+    
+    def _infer_distributed_backend_if_none(self, distributed_conf, accelerator):
+        if distributed_conf.backend is None:
+            distributed_conf.backend = "nccl" if accelerator == "cuda" else "gloo"
+        
+    
+    def _setup_env_variables(self, env_variables_conf) -> None:
+        if env_variables_conf is not None:
+            for variable_name, value in env_variables_conf.items():
+                os.environ[variable_name] = value
+        
+    
+    def _setup_torch_dist_and_backend(self, cuda_conf, distributed_conf) -> None:
+        if torch.cuda.is_available():
+            torch.backends.cudnn.deterministic = cuda_conf.cudnn_deterministic
+            torch.backends.cudnn.benchmark = cuda_conf.cudnn_benchmark
+            torch.backends.matmul_allow_tf32 = (
+                cuda_conf.matmul_allow_tf32
+                if cuda_conf.matmul_allow_tf32 is not None
+                else cuda_conf.allow_tf32
+            )
+            
+            
+        self.rank = setup_distributed_backend(
+            distributed_conf.backend, distributed_conf.timeout_mins
+        )
+        
+        
+    def setup_device(self, accelerator):
+        self.local_rank, self.distributed_rank = get_machine_local_and_dist_rank()
+        if accelerator == "cuda":
+            self.device = torch.device("cuda", self.local_rank)
+            torch.cuda.set_device(self.local_rank)
+        elif accelerator == "cpu":
+            self.device = torch.device("cpu")
+        else:
+            raise ValueError(f"Unsupported accelerator: {accelerator}")
+        
+    
+    def _setup_ddp_distributed_training(self, distributed_conf, accelerator):
+        
+        assert isinstance(self.model, torch.nn.Module)
+        
+        self.model = nn.parallel.DistributedDataParallel(
+            self.model,
+            device_ids=[self.local_rank] if accelerator == "cuda" else [],
+            find_unused_parameters=distributed_conf.find_unused_parameters,
+        )
+        
+        if distributed_conf.comms_dtype is not None: # noqa
+            from torch.distributed.algorithms import ddp_comm_hooks
+           
+            amp_type = get_amp_type(distributed_conf.comms_dtype)
+            if amp_type == torch.bfloat16:
+               hook = ddp_comm_hooks.default_hooks.bf16_compress_book
+               logging.info("Enabling bfloat16 grad communication")
+            else:
+               hook = ddp_comm_hooks.default_hooks.fp16_compress_book
+               logging.info("Enabling fp16 grad communication")
+            process_group = None
+            self.model.register_comm_hook(process_group, hook)
+            
+            
+    def _move_to_device(self):
+        logging.info(
+            f"Moving components to device {self.device} and local rank {self.local_rank}"
+        )
+        
+        self.model.to(self.device)
+        
+        logging.info(
+            f"Done moving components to device {self.device} and local rank {self.local_rank}"
+        )
+           
+    
+    def save_checkpoint(self, epoch, checkpoint_names = None): 
+            
+                
+                
+            
         
         
         
