@@ -328,11 +328,268 @@ class Trainer:
            
     
     def save_checkpoint(self, epoch, checkpoint_names = None): 
+        checkpoint_folder = self.checkpoint_conf.save_dir
+        makedir(checkpoint_folder)
+        if checkpoint_names is None:
+            checkpoint_names = ["checkpoint"]
+            if (
+                self.checkpoint_conf.save_freq > 0
+                and (int(epoch) % self.checkpoint_conf.save_freq == 0)
+                ) or int(epoch) % self.checkpoint_conf.save_list:
+                    checkpoint_names.append(f"checkpoint_{int(epoch)}")
+                    
+            checkpoint_paths = []
+            for ckpt_name in checkpoint_names:
+                checkpoint_paths.append(os.path.join(checkpoint_folder, f"{ckpt_name}.pt"))
             
+            state_dict = unwrap_ddp_if_wrapped(self.model).state_dict()
+            state_dict = exclude_params_matching_unix_pattern(
+                patterns = self.checkpoint_conf.skip_saving_parameters, state_dict = state_dict
+            )
+            
+            checkpoint = {
+                "model": state_dict,
+                "optimizer": self.optim.optimizer.state_dict(),
+                "epoch": epoch,
+                "loss": self.loss.state_dict(),
+                "steps": self.steps,
+                "time_elapsed": self.time_elapsed_meter.val,
+                "best_meter_values": self.best_meter_values,
+            }
+            
+            if self.optim_conf.amp.enabled:
+                checkpoint["scaler"] = self.scaler.state_dict()
                 
+            # DDP checkpoints are only saved on rank 0 (all workers are identical)
+            if self.distributed_rank != 0:
+                return
+            
+            for checkpoint_path in checkpoint_paths:
+                self._save_checkpoint(checkpoint, checkpoint_path)
                 
             
+        def _save_checkpoint(self, checkpoint, checkpoint_path):
+            """ 
+            Save a checkpoint while guarding against the job being killed in 
+            the middle of checkpoint saving (which corrupts the checkpoint file and ruins the
+            entire traininh since usually only the last checkpoint is kept per run).
+            
+            We first save the new checkpoint to a temp file (with a '.tmp' suffix) and
+            move it to overwrite the old checkpoint path.
+            """
+            
+            checkpoint_path_tmp = f"{checkpoint_path}.tmp"
+            with g_pathmgr.open(checkpoint_path_tmp, "wb") as f:
+                 torch.save(checkpoint, f)
+            # after torch.save is completed, replace the old checkpoint with the new one
+            if g_pathmgr.exists(checkpoint_path):
+                # remove the old checkpoint_path file first (otherwise g_pathmgr.mv fails)
+                g_pathmgr.rm(checkpoint_path)
+            success = g_pathmgr.mv(checkpoint_path_tmp, checkpoint_path)
+            assert success
+            
+        
+        def load_checkpoint(self):
+            ckpt_path = get_resume_checkpoint(self.checkpoint_conf.save_dir)
+            if ckpt_path is None:
+                self._init_model_state()
+            else:
+                if self.checkpoint_conf.initialize_after_preemption:
+                    self._call_model_initializer()
+                self._load_resuming_checkpoint(ckpt_path)
+                
+        
+        def _init_model_state(self):
+            # Checking that parameters that won't be saved are indeed frozen
+            # We do this check here before even saving the model to catch errors
+            # are early as possible and not at the end of first epoch
+            assert_skipped_parameters_are_frozen(
+                patterns = self.checkpoint_conf.skip_saving_parameters,
+                model = self.model,
+            )
+            
+            # Checking that parameters that won't be saved are intialized within the model
+            # definition, unless `initialize_after_preemption` is explicitly set to `True`. 
+            # If not, this is a bug, and after preemption, the `skip_saving_parameters` will 
+            # have random values
+            allow_init_skip_parameters = self.checkpoint_conf.initialize_after_preemption
+            with with_check_parameter_frozen(
+                patterns = self.checkpoint_conf.skip_saving_paramters,
+                model = self.model,
+                disabled = allow_init_skip_parameters,
+            ):
+                self._call_model_initializer()
+        
+        def _call_model_initializer(self):
+            model_weight_intializer = instantiate(
+                self.checkpoint_conf.model_weight_initializer
+            )
+        
+            if model_weight_intializer is not None:
+                logging.info(
+                    f"Loading pretrained checkpoint from {self.checkpoint_conf.model_weight_intializer}"
+                )
+                self.model = model_weight_intializer(model = self.model)
+        
+        def _load_resuming_checkpoint(self, ckpt_path: str):
+            logging.info(f"Resuming training from {ckpt_path}")
+            
+            with g_pathmgr.open(ckpt_path, "rb") as f:
+                checkpoint = torch.load(f, map_location="cpu")
+            load_state_dict_to_model(
+                model = self.model,
+                state_dict = checkpoint["model"],
+                ignore_missing_keys = self.checkpoint_conf.skip_saving_parameters,
+            )
+        
+            self.optim.optimizer.load_state_dict(checkpoint["optimizer"])
+            self.loss.load_state_dict(checkpoint["loss"], strict = True)
+            self.epoch = checkpoint["epochs"]
+            self.steps = checkpoint["steps"]
+            self.ckpt_time_elapsed = checkpoint.get("time_elapsed")
+            
+            if self.optim.conf.amp.enabled and "scaler" in checkpoint:
+                self.scaler.load_state_dict(checkpoint["scaler"])
+            
+            self.best_meter_values = checkpoint.get("best_meter_values", {})
+            
+            if "train_dataset" in checkpoint and self.train_dataset is not None:
+                self.train_dataset.load_checkpoint_state(checkpoint["train_dataset"])
         
         
+        def is_intermediate_val_epoch(self, epoch):
+            return epoch % self.val_epoch_freq == 0 and epoch < self.max_epochs - 1
         
-    
+        def _step(
+            self,
+            batch: BatchedVideoDatapoint,
+            model: nn.Module,
+            phase: str,
+        ):
+            outputs = model(batch)
+            targets = batch.masks
+            batch_size = len(batch.img_batch)
+            
+            key = batch.dict_key # key for dataset
+            loss = self.loss[key](outputs, targets)
+            loss_str = f"Losses/{phase}_{key}_loss"
+            
+            loss_log_str = os.path.join("Step_Losses", loss_str)
+            
+            # loss contains multiple sub-components we wish to log
+            step_losses  ={}
+            if isinstance(loss, dict):
+                step_losses.update(
+                    {"Losses/{phase}_{key}_{k}": v for k,v in loss.items()}
+                )
+                
+                loss = self._log_loss_detailed_and_return_core_loss(
+                    loss, loss_log_str, self.steps[phase]
+                )
+                
+            if self.steps[phase] % self.logging_conf.log_scalar_frequency == 0:
+                self.logger.log(
+                    loss_log_str,
+                    loss,
+                    self.steps[phase],
+                )
+                
+            self.steps[phase] += 1
+            
+            ret_tuple = {loss_str: loss}, batch_size, step_losses
+            
+            if phase in self.meters and key in self.meters[phase]:
+                meters_dict = self.meters[phase][key]
+                if meters_dict is not None:
+                    for _, meter in meters_dict.items():
+                        meter.update(
+                            find_stages = outputs,
+                            find_metadatas = batch.metadata
+                        )
+            return ret_tuple
+        
+        
+        def run(self):
+            assert self.mode in ["train", "train_only", "val"]
+            if self.mode == "train":
+                if self.epoch > 0:
+                    logging.info(f"Resuming training from epoch: {self.epoch}")
+                    # resume from a checkpoint
+                    if self.is_intermediate_val_epoch(self.epoch - 1):
+                        logging.info("Running previous val epoch")
+                        self.epoch -= 1
+                        self.run_val()
+                        self.epoch += 1
+                    
+                    self.run_train()
+                    self.run_val()
+                elif self.mode == "val":
+                    self.run_val()
+                elif self.mode == "train_only":
+                    self.run_train()
+                    
+        def _setup_dataloader(self):
+            self.train_dataset = None
+            self.val_dataset = None
+            
+            if self.mode in ["train", "val"]:
+                self.val_dataset = instantiate(self.data_conf.get(Phase.VAL, None))
+            
+            if self.mode in ["train", "train_only"]:
+                self.train_dataset = instantiate(self.data_conf.train)
+                    
+        def run_train(self):
+            
+            while self.epoch < self.max_epochs:
+                dataloader = self.train_dataset.get_loader(epoch = int(self.epoch))
+                barrier()
+                outs = self.train_epoch(dataloader)
+                self.logger.log_dict(outs, self.epoch) # Logged only on rank 6
+                
+                # log train to text file
+                if self.distributed_rank == 0:
+                    with g_pathmgr.open(
+                        os.path.join(self.logging_conf.log_dir, "train_stats.json"),
+                        "a",
+                    ) as f:
+                        f.write(json.dumps(outs) + "\n")
+                    
+                    # Save checkpoint before validating
+                    self.save_checkpoint(self.epoch + 1)
+                    
+                    del dataloader
+                    gc.collect()
+                    
+                    # Run val, not running on last epoch since will run after the loop anyway
+                    if self.is_intermediate_val_epoch(self.epoch):
+                        self.run().eval()
+                        
+                    if self.distributed_rank == 0:
+                       self.best_meter_values.update(self._get_trainer_state("train"))
+                       with g_pathmgr.open(
+                           os.path.join(self.logging_conf.log_dir, "best_stats.json"),
+                           "a",
+                       ) as f:
+                           f.write(json.dumps(self.best_meter_values) + "\n")
+                    
+                    self.epoch += 1
+            # epoch was incremented in the loop but the val step runs out of the loop
+            self.epoch -= 1
+        
+        def run_val(self):
+            if not self.val_dataset:
+                return
+            
+            dataloader = self.val_dataset.get_loader(epoch = int(self.epoch))
+            outs = self.val_epoch(dataloader, phase = Phase.VAL)
+            del dataloader
+            gc.collect()
+            self.logger.log_dict(outs, self.epoch) # Logged only on rank 0
+            
+            if self.distributed_rank == 0:
+               with g_pathmgr.open(
+                   os.path.join(self.logging_conf.log_dir, "val_stats.json"),
+                   "a",
+               ) as f:
+                   f.write(json.dumps(outs) + "\n")
+                        
