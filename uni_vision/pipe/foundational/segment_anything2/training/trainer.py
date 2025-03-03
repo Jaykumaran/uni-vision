@@ -869,4 +869,47 @@ class Trainer:
                     data_time,
                     step,
                 )
+    
+    def _run_step(
+        self,
+        batch: BatchedVideoDatapoint,
+        phase: str,
+        loss_mts:  Dict[str, AverageMeter],
+        extra_loss_mts: Dict[str, AverageMeter],
+        raise_on_error: bool = True
+    ):
+        """  
+        Run the forward/ backward
+        """
         
+        # it is important to set the grads to None, especially with Adam since 0
+        # grads will also update a model even if the step doesn't produce gradients
+        self.optim.zero_grad(set_to_none = True)
+        with torch.cuda.amp.autocast(
+            enabled=self.optim_conf.amp.enabled,
+            dtype=get_amp_type(self.optim_conf.amp.amp_dtype),
+        ):
+            loss_dict, batch_size, extra_losses - self._step(
+                batch,
+                self.model,
+                phase
+            )
+        assert len(loss_dict) == 1
+        loss_key, loss = loss_dict.popitem()
+        
+        if not math.isfinite(loss.item()):
+            error_msg = f"Loss is {loss.item()}, attempting to stop training"
+            logging.error(error_msg)
+            if raise_on_error:
+                raise FloatingPointError(error_msg)
+            else:
+                return
+        
+        self.scaler.scale(loss).backward()
+        loss_mts[loss_key].update(loss.item(), batch_size)
+        for extra_loss_key, extra_loss in extra_losses.items():
+            if extra_loss_key not in extra_loss_mts:
+                extra_loss_mts[extra_loss_key] = AverageMeter(
+                    extra_loss_key, self.device, ":.2e"
+                )
+            extra_loss_mts[extra_loss_key].update(extra_loss.item(), batch_size)

@@ -88,7 +88,7 @@ def multi_loss_fusion(preds, target):
         if(i==0):
             loss0 = loss #initial loss
         
-    return loss0, losslossmuti_bce_loss_fusion
+    return loss0, loss
 
 
 fea_loss = nn.MSELoss(size_average=True) # average over all loss values, i.e. loss of each samples is averaged ??
